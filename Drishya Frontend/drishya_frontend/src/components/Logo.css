@@ -1,0 +1,43 @@
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo-stacked {
+  flex-direction: column;
+  text-align: center;
+  gap: 6px;
+}
+
+.logo-icon {
+  flex-shrink: 0;
+  display: block;
+}
+
+.logo-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.logo-stacked .logo-text {
+  align-items: center;
+}
+
+.logo-word {
+  font-family: 'Calibri', var(--sans);
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: -0.2px;
+  color: var(--logo-primary);
+}
+
+.logo-tagline {
+  font-family: 'Calibri', var(--sans);
+  font-weight: 400;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  color: var(--logo-secondary);
+  margin-top: 2px;
+}

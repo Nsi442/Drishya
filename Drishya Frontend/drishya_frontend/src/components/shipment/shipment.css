@@ -1,0 +1,301 @@
+/* --- timeline ----------------------------------------------------------- */
+.timeline {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.timeline-item {
+  display: flex;
+  gap: 14px;
+  padding-bottom: var(--space-6);
+  position: relative;
+}
+.timeline-item:last-child {
+  padding-bottom: 0;
+}
+/* The connecting rail is drawn per item so the last one has no tail. */
+.timeline-item:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  top: 26px;
+  bottom: 2px;
+  width: 2px;
+  background: var(--border);
+  border-radius: 1px;
+}
+.timeline-item.is-done:not(:last-child)::before {
+  background: var(--accent);
+}
+
+.timeline-marker {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--surface-sunken);
+  color: var(--text-subtle);
+  border: 2px solid var(--surface-card);
+  box-shadow: 0 0 0 1px var(--border);
+  position: relative;
+  z-index: 1;
+}
+.timeline-item.is-done .timeline-marker {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  box-shadow: 0 0 0 1px var(--accent-border);
+}
+.timeline-item.is-current .timeline-marker {
+  background: var(--accent);
+  color: var(--text-on-accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.timeline-content {
+  flex: 1;
+  min-width: 0;
+  padding-top: 3px;
+}
+.timeline-label {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: var(--lh-snug);
+  color: var(--text-strong);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.timeline-item.is-upcoming .timeline-label {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.timeline-now {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border-radius: var(--radius-full);
+  padding: 1px 7px;
+}
+.timeline-time {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.timeline-detail {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 5px;
+  line-height: var(--lh-base);
+}
+.timeline-compact .timeline-item {
+  padding-bottom: var(--space-4);
+}
+
+/* --- ETA panel ---------------------------------------------------------- */
+.eta-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.eta-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+}
+.eta-progress {
+  padding-top: 2px;
+}
+
+/* --- driver & vehicle --------------------------------------------------- */
+.dv-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.dv-person {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: var(--space-4);
+  background: var(--surface-sunken);
+  border-bottom: 1px solid var(--border);
+}
+
+/* --- documents ---------------------------------------------------------- */
+.doc-strip {
+  display: flex;
+  flex-direction: column;
+}
+.doc-strip-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.doc-strip-item:last-child {
+  border-bottom: none;
+}
+.doc-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+}
+.doc-icon.is-valid {
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+.doc-icon.is-expiring {
+  background: var(--warn-soft);
+  color: var(--warn-text);
+}
+.doc-icon.is-mismatch,
+.doc-icon.is-missing {
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+.doc-icon.is-pending {
+  background: var(--info-soft);
+  color: var(--info-text);
+}
+
+/* --- sensors ------------------------------------------------------------ */
+.sensor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-4);
+}
+.sensor-tile {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.sensor-now {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sensor-foot {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: var(--lh-small);
+}
+.door-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  font-size: 12px;
+  line-height: var(--lh-ui);
+}
+.door-list li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.door-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.door-dot.is-ok {
+  background: var(--text-subtle);
+}
+.door-dot.is-alert {
+  background: var(--danger);
+}
+
+/* --- proof of delivery -------------------------------------------------- */
+.pod-pending {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+.pod-signature {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  padding: 6px 10px;
+}
+.pod-photo {
+  width: 78px;
+  height: 78px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-sunken);
+  color: var(--text-subtle);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+/* --- compact shipment row ----------------------------------------------- */
+.ship-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 14px var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  border-left: 3px solid transparent;
+  transition: background-color 0.1s ease;
+  color: inherit;
+}
+.ship-row:hover {
+  background: var(--surface-hover);
+  text-decoration: none;
+}
+.ship-row.is-active {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+.ship-row:focus-visible {
+  outline: none;
+  box-shadow: inset var(--ring);
+}
+.ship-row:last-child {
+  border-bottom: none;
+}
+
+/* Stand-in for a rendered PDF. There is no file store in this build, and a
+   fake page of text would be worse than an honest placeholder. */
+.doc-preview {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  padding: 36px 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.ml-6 {
+  margin-left: 6px;
+}

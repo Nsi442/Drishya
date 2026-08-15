@@ -1,0 +1,365 @@
+/* Calendar and dock-gantt. Both lay time out horizontally or vertically from
+   the same hour scale so a slot means the same thing on either. */
+
+.cal {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface-card);
+}
+
+.cal-scroll {
+  overflow: auto;
+  max-height: 68vh;
+}
+
+.cal-grid {
+  display: grid;
+  min-width: 640px;
+  position: relative;
+}
+
+.cal-head {
+  display: contents;
+}
+.cal-corner,
+.cal-dayhead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--surface-sunken);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 10px;
+}
+.cal-corner {
+  left: 0;
+  z-index: 4;
+  border-right: 1px solid var(--border);
+}
+.cal-dayhead {
+  text-align: center;
+  border-left: 1px solid var(--border-subtle);
+}
+.cal-dayname {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.cal-daynum {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.cal-daycount {
+  font-size: 11px;
+  color: var(--text-subtle);
+}
+.cal-daycol.is-today,
+.cal-dayhead.is-today {
+  background: var(--accent-soft);
+}
+.cal-dayhead.is-today .cal-daynum {
+  color: var(--accent-text);
+}
+
+.cal-hour {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--surface-card);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--text-subtle);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.cal-cell {
+  border-left: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  min-height: 52px;
+  padding: 3px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.cal-cell.is-outside {
+  background: var(--surface-sunken);
+}
+
+/* An appointment block. Status is a left rule plus a pill, never fill alone. */
+.cal-event {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border-radius: var(--radius-xs);
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--text-subtle);
+  background: var(--surface-card);
+  color: var(--text);
+  overflow: hidden;
+  transition: box-shadow 0.12s ease, transform 0.12s ease;
+}
+.cal-event:hover {
+  box-shadow: var(--shadow-sm);
+  text-decoration: none;
+  z-index: 2;
+}
+.cal-event:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+.cal-event-title {
+  font-weight: 600;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-event-sub {
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-event.is-confirmed {
+  border-left-color: var(--success);
+  background: var(--success-soft);
+}
+.cal-event.is-requested {
+  border-left-color: var(--warn);
+  background: var(--warn-soft);
+}
+.cal-event.is-rejected {
+  border-left-color: var(--danger);
+  background: var(--danger-soft);
+}
+.cal-event.is-alternative {
+  border-left-color: var(--info);
+  background: var(--info-soft);
+}
+.cal-event.is-completed {
+  border-left-color: var(--text-subtle);
+  background: var(--surface-sunken);
+  opacity: 0.85;
+}
+
+.cal-legend {
+  display: flex;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+  padding: var(--space-3) 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-sunken);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.cal-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cal-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border-left: 3px solid;
+}
+
+/* ======================================================================
+   Dock gantt
+   ====================================================================== */
+.gantt {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface-card);
+}
+.gantt-scroll {
+  overflow-x: auto;
+}
+.gantt-inner {
+  min-width: 900px;
+}
+
+.gantt-hours {
+  display: grid;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-sunken);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.gantt-hour {
+  padding: 7px 0 7px 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-left: 1px solid var(--border-subtle);
+  font-variant-numeric: tabular-nums;
+}
+.gantt-corner {
+  border-left: none;
+  font-weight: 600;
+  color: var(--text-strong);
+  padding-left: 12px;
+}
+
+.gantt-row {
+  display: grid;
+  border-bottom: 1px solid var(--border-subtle);
+  min-height: 46px;
+  position: relative;
+}
+.gantt-row:last-child {
+  border-bottom: none;
+}
+.gantt-rowhead {
+  padding: var(--space-3) 14px;
+  border-right: 1px solid var(--border);
+  background: var(--surface-card);
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+}
+.gantt-dockname {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.gantt-dockmeta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* The lane the blocks sit in; hour rules are painted as a background so the
+   blocks can be positioned absolutely without fighting a grid. */
+.gantt-lane {
+  position: relative;
+  min-height: 46px;
+}
+.gantt-lane-grid {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  pointer-events: none;
+}
+.gantt-lane-cell {
+  border-left: 1px solid var(--border-subtle);
+}
+.gantt-lane-cell.is-closed {
+  background: var(--surface-sunken);
+}
+
+.gantt-block {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  padding: 3px 7px;
+  font-size: 11px;
+  overflow: hidden;
+  cursor: grab;
+  transition: box-shadow 0.12s ease;
+  text-align: left;
+  min-width: 26px;
+}
+.gantt-block:hover {
+  box-shadow: var(--shadow-md);
+  z-index: 3;
+}
+.gantt-block:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  z-index: 3;
+}
+.gantt-block.is-dragging {
+  opacity: 0.55;
+  cursor: grabbing;
+}
+.gantt-block.is-conflict {
+  border-color: var(--danger);
+  border-left-color: var(--danger);
+  background: var(--danger-soft);
+  /* A hatched fill so a clash is not carried by colour alone. */
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 5px,
+    color-mix(in srgb, var(--danger) 22%, transparent) 5px,
+    color-mix(in srgb, var(--danger) 22%, transparent) 10px
+  );
+}
+.gantt-block.is-requested {
+  border-left-color: var(--warn);
+  background: var(--warn-soft);
+}
+.gantt-block.is-completed {
+  border-left-color: var(--text-subtle);
+  background: var(--surface-sunken);
+}
+.gantt-block-title {
+  font-weight: 600;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gantt-block-sub {
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Drop target while a block is being dragged. */
+.gantt-lane.is-drop-target .gantt-lane-grid {
+  background: var(--accent-soft);
+}
+
+.gantt-now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--danger);
+  z-index: 4;
+  pointer-events: none;
+}
+.gantt-now::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+.gantt-util {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-sunken);
+  flex-wrap: wrap;
+}

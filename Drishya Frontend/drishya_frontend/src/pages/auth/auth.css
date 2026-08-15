@@ -1,0 +1,340 @@
+/* Split auth screen: the product's argument on the left, the form on the right.
+   Below 900px the left panel collapses to a slim header. */
+
+.auth {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  background: var(--surface-page);
+}
+
+.auth-brand {
+  background: var(--navy-800);
+  color: #fff;
+  padding: 40px 48px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  --logo-primary: #ffffff;
+  --logo-secondary: var(--teal-400);
+}
+
+/* A single soft wash so the panel is not a flat block of navy. */
+.auth-brand::after {
+  content: '';
+  position: absolute;
+  width: 620px;
+  height: 620px;
+  right: -240px;
+  bottom: -280px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(79, 209, 197, 0.16) 0%, transparent 68%);
+  pointer-events: none;
+}
+
+.auth-brand-body {
+  margin: auto 0;
+  max-width: 460px;
+  position: relative;
+  z-index: 1;
+}
+.auth-headline {
+  font-size: 34px;
+  line-height: 1.28;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: #fff;
+  margin-bottom: 14px;
+}
+.auth-headline em {
+  font-style: normal;
+  color: var(--teal-400);
+}
+.auth-lede {
+  font-size: 15px;
+  line-height: var(--lh-relaxed);
+  color: #a8b8d4;
+}
+
+.auth-points {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  margin-top: var(--space-7);
+}
+.auth-point {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.auth-point-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  background: rgba(79, 209, 197, 0.14);
+  color: var(--teal-400);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.auth-point-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: var(--lh-snug);
+  color: #fff;
+}
+.auth-point-desc {
+  font-size: 12px;
+  color: #8fa5c9;
+  line-height: var(--lh-base);
+  margin-top: 4px;
+}
+
+.auth-foot {
+  position: relative;
+  z-index: 1;
+  font-size: 12px;
+  color: #6b7f9e;
+}
+
+.auth-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  overflow-y: auto;
+}
+.auth-form {
+  width: 100%;
+  max-width: 388px;
+}
+.auth-title {
+  font-size: 24px;
+  letter-spacing: -0.018em;
+  line-height: var(--lh-snug);
+  margin-bottom: 7px;
+}
+.auth-sub {
+  font-size: 14px;
+  line-height: var(--lh-base);
+  color: var(--text-muted);
+  margin-bottom: var(--space-7);
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0 16px;
+  color: var(--text-subtle);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Demo role buttons — the fastest route to any screen in the product. */
+.demo-grid {
+  display: grid;
+  gap: 8px;
+}
+.demo-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 15px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  text-align: left;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+  width: 100%;
+}
+.demo-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.demo-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+.demo-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.demo-btn-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--accent-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.demo-btn-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: var(--lh-snug);
+  color: var(--text-strong);
+  display: block;
+}
+.demo-btn-desc {
+  font-size: 11px;
+  line-height: var(--lh-small);
+  color: var(--text-muted);
+  margin-top: 3px;
+  display: block;
+}
+
+/* --- signup stepper ----------------------------------------------------- */
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: var(--space-7);
+}
+.stepper-step {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+}
+.stepper-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  border: 1.5px solid var(--border-strong);
+  flex-shrink: 0;
+}
+.stepper-step.is-active .stepper-dot {
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border-color: var(--accent);
+}
+.stepper-step.is-done .stepper-dot {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border-color: var(--accent-border);
+}
+.stepper-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stepper-step.is-active .stepper-label {
+  color: var(--text-strong);
+}
+.stepper-line {
+  height: 1.5px;
+  background: var(--border-strong);
+  flex: 1;
+  min-width: 8px;
+  border-radius: 1px;
+}
+.stepper-line.is-done {
+  background: var(--accent);
+}
+
+/* Org type chooser */
+.org-choice {
+  display: flex;
+  gap: 14px;
+  padding: var(--space-4);
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+  width: 100%;
+  text-align: left;
+  align-items: flex-start;
+}
+.org-choice:hover {
+  border-color: var(--text-subtle);
+}
+.org-choice.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.org-choice:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+.org-choice-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.org-choice.is-selected .org-choice-icon {
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+
+/* --- 404 ---------------------------------------------------------------- */
+.notfound {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 24px;
+  gap: 8px;
+}
+.notfound-code {
+  font-size: 78px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: var(--text-strong);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 900px) {
+  .auth {
+    grid-template-columns: 1fr;
+  }
+  .auth-brand {
+    padding: 20px 24px;
+  }
+  .auth-brand-body {
+    margin: 16px 0;
+  }
+  .auth-headline {
+    font-size: 24px;
+  }
+  .auth-points,
+  .auth-foot {
+    display: none;
+  }
+  .auth-panel {
+    padding: 28px 20px 48px;
+  }
+}

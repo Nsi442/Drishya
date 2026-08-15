@@ -1,0 +1,229 @@
+/* Chart furniture. The data is the loud part; everything here recedes. */
+
+.recharts-wrapper {
+  font-family: var(--sans);
+}
+.recharts-cartesian-axis-tick text {
+  font-variant-numeric: tabular-nums;
+}
+.recharts-surface:focus {
+  outline: none;
+}
+
+/* --- tooltip ------------------------------------------------------------ */
+.chart-tip {
+  background: var(--surface-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  padding: 11px 13px;
+  min-width: 132px;
+  pointer-events: none;
+}
+.chart-tip-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+.chart-tip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.chart-tip-list li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+}
+.chart-tip-swatch,
+.chart-legend-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.chart-tip-name {
+  color: var(--text-muted);
+  flex: 1;
+}
+/* Values wear text tokens — never the series colour. */
+.chart-tip-value {
+  color: var(--text-strong);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- legend ------------------------------------------------------------- */
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding-top: 6px;
+}
+.chart-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* --- donut -------------------------------------------------------------- */
+.donut-wrap {
+  position: relative;
+}
+.donut-centre {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  gap: 1px;
+}
+.donut-centre-value {
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.donut-centre-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.donut-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 12px;
+  line-height: var(--lh-ui);
+  color: var(--text);
+}
+.donut-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.donut-legend-value {
+  font-weight: 600;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+.donut-legend-pct {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  width: 34px;
+  text-align: right;
+}
+
+/* --- sparkline ---------------------------------------------------------- */
+.spark-empty {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--text-subtle);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-xs);
+}
+
+/* --- heatmap ------------------------------------------------------------ */
+.heatmap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.heatmap-scroll {
+  overflow-x: auto;
+}
+.heatmap-table {
+  border-collapse: separate;
+  border-spacing: 2px;
+  width: 100%;
+}
+.heatmap-corner {
+  width: 38px;
+}
+.heatmap-col-head {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-subtle);
+  padding-bottom: 3px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.heatmap-row-head {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: right;
+  padding-right: 7px;
+  white-space: nowrap;
+}
+.heatmap-cell-wrap {
+  padding: 0;
+}
+.heatmap-cell {
+  display: block;
+  height: 22px;
+  min-width: 20px;
+  border-radius: 3px;
+  transition: transform 0.1s ease;
+}
+.heatmap-cell:hover {
+  transform: scale(1.12);
+  outline: 1px solid var(--text-strong);
+}
+.heatmap-key {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: flex-end;
+}
+.heatmap-key-swatch {
+  width: 15px;
+  height: 11px;
+  border-radius: 2px;
+}
+
+/* --- inline magnitude bar ----------------------------------------------- */
+.minibar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 108px;
+}
+.minibar-track {
+  flex: 1;
+  height: 5px;
+  background: var(--surface-sunken);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  min-width: 44px;
+}
+.minibar-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+}
+.minibar-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  text-align: right;
+}

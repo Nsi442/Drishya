@@ -1,0 +1,464 @@
+/* Small composable helpers. Anything used more than twice earns a class here
+   rather than an inline style. */
+
+.stack {
+  display: flex;
+  flex-direction: column;
+}
+.row {
+  display: flex;
+  align-items: center;
+}
+.row-top {
+  display: flex;
+  align-items: flex-start;
+}
+.wrap {
+  flex-wrap: wrap;
+}
+.between {
+  justify-content: space-between;
+}
+.center {
+  justify-content: center;
+  align-items: center;
+}
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+.shrink-0 {
+  flex-shrink: 0;
+}
+
+.gap-2 {
+  gap: 2px;
+}
+.gap-4 {
+  gap: 4px;
+}
+.gap-6 {
+  gap: 6px;
+}
+.gap-8 {
+  gap: 8px;
+}
+.gap-12 {
+  gap: 12px;
+}
+.gap-16 {
+  gap: 16px;
+}
+.gap-20 {
+  gap: 20px;
+}
+.gap-24 {
+  gap: 24px;
+}
+
+.mt-4 {
+  margin-top: 4px;
+}
+.mt-8 {
+  margin-top: 8px;
+}
+.mt-12 {
+  margin-top: 12px;
+}
+.mt-16 {
+  margin-top: 16px;
+}
+.mt-24 {
+  margin-top: 24px;
+}
+.mb-8 {
+  margin-bottom: 8px;
+}
+.mb-12 {
+  margin-bottom: 12px;
+}
+.mb-16 {
+  margin-bottom: 16px;
+}
+.mb-24 {
+  margin-bottom: 24px;
+}
+
+/* --- type helpers -------------------------------------------------------
+   Small sizes carry their own line-height. At 11–12px an inherited 1.5 leaves
+   barely 17px between baselines, which is what makes a two-line caption read
+   as a solid block. */
+.t-xs {
+  font-size: 11px;
+  line-height: var(--lh-small);
+}
+.t-sm {
+  font-size: 12px;
+  line-height: var(--lh-small);
+}
+.t-md {
+  font-size: 13px;
+  line-height: var(--lh-base);
+}
+.t-base {
+  font-size: 14px;
+  line-height: var(--lh-base);
+}
+.t-lg {
+  font-size: 16px;
+  line-height: var(--lh-ui);
+}
+.t-xl {
+  font-size: 20px;
+  line-height: var(--lh-snug);
+}
+.t-2xl {
+  font-size: 26px;
+  line-height: var(--lh-tight);
+  letter-spacing: -0.015em;
+}
+.t-3xl {
+  font-size: 32px;
+  line-height: var(--lh-tight);
+  letter-spacing: -0.02em;
+}
+
+.fw-500 {
+  font-weight: 500;
+}
+.fw-600 {
+  font-weight: 600;
+}
+.fw-700 {
+  font-weight: 700;
+}
+
+.c-strong {
+  color: var(--text-strong);
+}
+.c-text {
+  color: var(--text);
+}
+.c-muted {
+  color: var(--text-muted);
+}
+.c-subtle {
+  color: var(--text-subtle);
+}
+.c-accent {
+  color: var(--accent-text);
+}
+.c-warn {
+  color: var(--warn-text);
+}
+.c-danger {
+  color: var(--danger-text);
+}
+.c-success {
+  color: var(--success-text);
+}
+
+.uppercase {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.mono {
+  font-family: var(--mono);
+}
+.nowrap {
+  white-space: nowrap;
+}
+.right {
+  text-align: right;
+}
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Section label above a group of fields or a chart. */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  line-height: var(--lh-ui);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* --- page scaffolding --------------------------------------------------- */
+.page {
+  padding: var(--pad-page-y) var(--pad-page-x) var(--space-9);
+  max-width: 1680px;
+  margin: 0 auto;
+  width: 100%;
+}
+.page-wide {
+  max-width: none;
+}
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-6);
+}
+.page-title {
+  font-size: 22px;
+  line-height: var(--lh-snug);
+  letter-spacing: -0.015em;
+}
+.page-sub {
+  font-size: 13px;
+  line-height: var(--lh-base);
+  color: var(--text-muted);
+  margin-top: 5px;
+  max-width: 76ch;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: var(--space-4) var(--space-4) var(--space-8);
+  }
+  .page-title {
+    font-size: 19px;
+  }
+}
+
+/* Standard inner padding for a panel that is not a .card — drawer bodies and
+   the like. Replaces the inline padding those used to carry. */
+.pad {
+  padding: var(--pad-card);
+}
+.pad-tight {
+  padding: var(--pad-card-tight);
+}
+
+/* A stacked row with a hairline under it. This turned up in six places
+   written six slightly different ways — settings toggles, vendor drilldowns,
+   the yard summary — which is exactly what made the rhythm look inconsistent.
+   One class now, so they cannot drift apart again. */
+.list-row {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.list-row:last-child {
+  border-bottom: none;
+}
+
+/* The same row, inset to a panel's own horizontal padding. */
+.list-row-inset {
+  padding: var(--space-3) var(--pad-card);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.list-row-inset:last-child {
+  border-bottom: none;
+}
+
+/* A tab strip sitting inside a flush card body, aligned to its padding. */
+.tabs-inset {
+  padding: 0 var(--pad-card);
+}
+
+/* Header and footer bands inside a side panel — the control tower's filter
+   bar and its action footer. */
+.panel-head {
+  border-bottom: 1px solid var(--border);
+}
+.panel-foot {
+  border-top: 1px solid var(--border);
+  background: var(--surface-card);
+}
+
+/* A row that pairs a checkbox with a label and a status pill; used by the
+   receiving document check and anywhere else a list of things gets ticked. */
+.verify-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.verify-row.is-flagged {
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
+}
+
+/* --- grids -------------------------------------------------------------- */
+.grid {
+  display: grid;
+  gap: var(--space-5);
+}
+.grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.grid-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.grid-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.grid-auto {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+@media (max-width: 1200px) {
+  .grid-5 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 900px) {
+  .grid-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .grid-2,
+  .grid-3,
+  .grid-4,
+  .grid-5 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* --- definition rows (used across every detail panel) ------------------- */
+.dl {
+  display: grid;
+  grid-template-columns: minmax(120px, auto) 1fr;
+  gap: var(--space-3) var(--space-5);
+  margin: 0;
+  font-size: 13px;
+  line-height: var(--lh-base);
+}
+.dl dt {
+  color: var(--text-muted);
+}
+.dl dd {
+  margin: 0;
+  color: var(--text-strong);
+  font-weight: 500;
+}
+
+/* A key/value pair stacked, for compact metric strips. */
+.kv {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.kv-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: var(--lh-snug);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.kv-value {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: var(--lh-snug);
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- live update flash --------------------------------------------------
+   Applied for one animation cycle when a row's data changes underneath the
+   reader, so movement is noticed without being distracting. */
+@keyframes drishya-flash {
+  0% {
+    background-color: var(--accent-soft);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+.flash {
+  animation: drishya-flash 1.2s ease-out;
+}
+
+@keyframes drishya-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+  flex-shrink: 0;
+  animation: drishya-pulse 2s ease-in-out infinite;
+}
+.live-dot.is-paused {
+  background: var(--text-subtle);
+  animation: none;
+}
+
+@keyframes drishya-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.fade-up {
+  animation: drishya-fade-up 0.2s ease-out;
+}
+
+@keyframes drishya-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: drishya-spin 0.8s linear infinite;
+}
+
+/* --- misc --------------------------------------------------------------- */
+.divider {
+  height: 1px;
+  background: var(--border);
+  border: none;
+}
+.vdivider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+}
+.scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.hide-sm {
+  display: initial;
+}
+@media (max-width: 768px) {
+  .hide-sm {
+    display: none !important;
+  }
+}

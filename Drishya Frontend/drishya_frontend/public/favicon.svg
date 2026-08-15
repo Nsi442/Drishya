@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-120 -80 240 160">
+  <style>
+    .primary { fill: none; stroke: #000; }
+    .secondary { stroke: #767676; fill: #767676; }
+    @media (prefers-color-scheme: dark) {
+      .primary { stroke: #fff; }
+      .secondary { stroke: #b3b3b3; fill: #b3b3b3; }
+    }
+  </style>
+  <path
+    class="primary"
+    d="M -86.602 0 A 100 100 0 0 1 86.602 0 A 100 100 0 0 1 -86.602 0 Z"
+    stroke-width="14"
+  />
+  <circle class="secondary" cx="0" cy="0" r="30" fill="none" stroke-width="14" />
+  <circle class="secondary" cx="0" cy="0" r="10" />
+</svg>

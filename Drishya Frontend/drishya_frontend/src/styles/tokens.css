@@ -1,0 +1,316 @@
+/* Drishya design tokens.
+   Every colour the app uses is declared here twice: once on :root (light) and
+   once under [data-theme='dark']. Components never hardcode a hex. */
+
+:root {
+  /* --- brand ------------------------------------------------------------ */
+  --navy-900: #0a1428;
+  --navy-800: #0e1b33;
+  --navy-700: #16264a;
+  --navy-600: #1b2b4d;
+  --navy-500: #24395f;
+  --navy-400: #35507d;
+
+  --teal-600: #0f9b8e;
+  --teal-500: #17b3a3;
+  --teal-400: #4fd1c5;
+  --teal-300: #7fe0d7;
+
+  --amber-600: #b8770a;
+  --amber-500: #d98a0b;
+  --amber-400: #f6be4f;
+
+  --red-600: #b42318;
+  --red-500: #dc4437;
+  --red-400: #f97066;
+
+  --green-600: #067647;
+  --green-500: #10985e;
+  --green-400: #47c98a;
+
+  --blue-600: #175cd3;
+  --blue-500: #2e79e8;
+  --blue-400: #6aa5f4;
+
+  --violet-500: #6941c6;
+  --violet-400: #9a7ce8;
+
+  /* --- neutrals --------------------------------------------------------- */
+  --grey-25: #fcfcfd;
+  --grey-50: #f8fafc;
+  --grey-100: #f1f4f8;
+  --grey-200: #e4e9f0;
+  --grey-300: #d0d8e4;
+  --grey-400: #98a5ba;
+  --grey-500: #6b7c96;
+  --grey-600: #4d5d75;
+  --grey-700: #35435a;
+  --grey-800: #1f2b3e;
+  --grey-900: #111a2b;
+
+  /* --- semantic: surfaces ----------------------------------------------- */
+  --surface-page: var(--grey-50);
+  --surface-card: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: var(--grey-100);
+  --surface-hover: var(--grey-100);
+  --surface-active: var(--grey-200);
+  --surface-inverse: var(--navy-800);
+
+  /* the shell (sidebar / driver chrome) stays navy in both themes */
+  --shell-bg: var(--navy-800);
+  --shell-bg-deep: var(--navy-900);
+  --shell-item: #a8b8d4;
+  --shell-item-hover: #ffffff;
+  --shell-item-active-bg: var(--navy-600);
+  --shell-border: rgba(255, 255, 255, 0.08);
+
+  /* --- semantic: text --------------------------------------------------- */
+  --text-strong: var(--grey-900);
+  --text: var(--grey-700);
+  --text-muted: var(--grey-500);
+  --text-subtle: var(--grey-400);
+  --text-inverse: #ffffff;
+  --text-on-accent: #04201d;
+
+  /* --- semantic: lines -------------------------------------------------- */
+  --border: var(--grey-200);
+  --border-strong: var(--grey-300);
+  --border-subtle: var(--grey-100);
+
+  /* --- semantic: intent ------------------------------------------------- */
+  --accent: var(--teal-600);
+  --accent-hover: #0c8478;
+  --accent-soft: rgba(15, 155, 142, 0.1);
+  --accent-border: rgba(15, 155, 142, 0.35);
+  --accent-text: #0a6b62;
+
+  --warn: var(--amber-500);
+  --warn-soft: rgba(217, 138, 11, 0.12);
+  --warn-border: rgba(217, 138, 11, 0.35);
+  --warn-text: #8a5606;
+
+  --danger: var(--red-600);
+  --danger-hover: #94170f;
+  --danger-soft: rgba(180, 35, 24, 0.1);
+  --danger-border: rgba(180, 35, 24, 0.3);
+  --danger-text: var(--red-600);
+
+  --success: var(--green-600);
+  --success-soft: rgba(6, 118, 71, 0.1);
+  --success-border: rgba(6, 118, 71, 0.3);
+  --success-text: var(--green-600);
+
+  --info: var(--blue-600);
+  --info-soft: rgba(23, 92, 211, 0.1);
+  --info-border: rgba(23, 92, 211, 0.3);
+  --info-text: var(--blue-600);
+
+  --neutral-soft: var(--grey-100);
+  --neutral-border: var(--grey-300);
+  --neutral-text: var(--grey-600);
+
+  --violet-soft: rgba(105, 65, 198, 0.1);
+  --violet-border: rgba(105, 65, 198, 0.3);
+  --violet-text: var(--violet-500);
+
+  /* --- chart palette ----------------------------------------------------
+     Categorical hues in FIXED order — series 1 is always teal, series 4 is
+     always red, whatever the filter leaves standing. Never cycled: a ninth
+     series folds into "Other" rather than inventing a hue.
+     Validated for lightness band, chroma, CVD separation (protan/deutan/
+     tritan) and contrast against the light card surface. */
+  --chart-1: #0f9b8e;
+  --chart-2: #b8770a;
+  --chart-3: #175cd3;
+  --chart-4: #b42318;
+  --chart-5: #6941c6;
+  --chart-6: #067647;
+
+  /* Sequential ramp — one hue, light to dark. Magnitude only. */
+  --seq-0: #f1f6f5;
+  --seq-1: #d3ece8;
+  --seq-2: #a9dcd4;
+  --seq-3: #74c6ba;
+  --seq-4: #38ab9c;
+  --seq-5: #0f8a7d;
+  --seq-6: #08635a;
+
+  /* Chart furniture stays recessive — the data is the loud part. */
+  --chart-grid: var(--grey-200);
+  --chart-axis: var(--grey-400);
+  --chart-surface: #ffffff;
+
+  /* logo marks pick these up */
+  --logo-primary: var(--navy-800);
+  --logo-secondary: var(--teal-600);
+
+  /* --- elevation -------------------------------------------------------- */
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.1), 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 4px 8px -2px rgba(16, 24, 40, 0.1), 0 2px 4px -2px rgba(16, 24, 40, 0.06);
+  --shadow-lg: 0 12px 16px -4px rgba(16, 24, 40, 0.08), 0 4px 6px -2px rgba(16, 24, 40, 0.03);
+  --shadow-xl: 0 20px 24px -4px rgba(16, 24, 40, 0.08), 0 8px 8px -4px rgba(16, 24, 40, 0.03);
+
+  --ring: 0 0 0 3px rgba(15, 155, 142, 0.35);
+  --ring-danger: 0 0 0 3px rgba(180, 35, 24, 0.3);
+
+  /* --- spacing ----------------------------------------------------------
+     One ladder, used by everything. A component never invents a gap: it picks
+     a rung. This is what keeps the rhythm the same on a dashboard card, a
+     table row and a drawer, which ad-hoc pixel values do not. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 56px;
+
+  /* Composite paddings, so "the inside of a card" means one thing. */
+  --pad-card: var(--space-5);
+  --pad-card-tight: var(--space-4);
+  --pad-header-y: 14px;
+  --pad-header-x: var(--space-5);
+  --pad-cell-y: var(--space-3);
+  --pad-cell-x: 14px;
+  --pad-cell-y-compact: 9px;
+  --pad-cell-x-compact: var(--space-3);
+  --pad-page-y: var(--space-6);
+  --pad-page-x: 28px;
+
+  /* --- line height ------------------------------------------------------
+     Cramped text is almost always a line-height problem rather than a font
+     one, so these are deliberately generous — 1.6 for anything a person
+     reads a sentence of. */
+  --lh-none: 1;
+  --lh-tight: 1.25; /* big display numbers */
+  --lh-snug: 1.4; /* headings and single-line labels */
+  --lh-ui: 1.5; /* dense UI text, table cells, menus */
+  --lh-small: 1.55; /* 11–12px captions, which need proportionally more */
+  --lh-base: 1.6; /* default — anything read as a sentence */
+  --lh-relaxed: 1.7; /* long descriptions and empty-state copy */
+
+  /* --- geometry --------------------------------------------------------- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 999px;
+
+  --sidebar-w: 244px;
+  --sidebar-rail-w: 68px;
+  --topbar-h: 60px;
+  --tabbar-h: 62px;
+
+  /* --- type ------------------------------------------------------------- */
+  --sans: 'Inter', 'Manrope', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --z-sticky: 20;
+  --z-drawer: 60;
+  --z-modal: 70;
+  --z-toast: 90;
+  --z-palette: 100;
+}
+
+[data-theme='dark'] {
+  --surface-page: #0b1220;
+  --surface-card: #121c2e;
+  --surface-raised: #17243a;
+  --surface-sunken: #0e1727;
+  --surface-hover: #1b2a42;
+  --surface-active: #223250;
+  --surface-inverse: #f8fafc;
+
+  --shell-bg: #0a1120;
+  --shell-bg-deep: #070d18;
+  --shell-item: #8fa5c9;
+  --shell-item-hover: #ffffff;
+  --shell-item-active-bg: #1b2a42;
+  --shell-border: rgba(255, 255, 255, 0.07);
+
+  --text-strong: #eef3f9;
+  --text: #c2cfe0;
+  --text-muted: #8fa5c9;
+  --text-subtle: #6b7f9e;
+  --text-inverse: #0b1220;
+  --text-on-accent: #04201d;
+
+  --border: #223250;
+  --border-strong: #2d4066;
+  --border-subtle: #1a273d;
+
+  --accent: var(--teal-400);
+  --accent-hover: var(--teal-300);
+  --accent-soft: rgba(79, 209, 197, 0.14);
+  --accent-border: rgba(79, 209, 197, 0.35);
+  --accent-text: var(--teal-300);
+
+  --warn: var(--amber-400);
+  --warn-soft: rgba(246, 190, 79, 0.14);
+  --warn-border: rgba(246, 190, 79, 0.35);
+  --warn-text: var(--amber-400);
+
+  --danger: var(--red-400);
+  --danger-hover: #fda29b;
+  --danger-soft: rgba(249, 112, 102, 0.14);
+  --danger-border: rgba(249, 112, 102, 0.35);
+  --danger-text: var(--red-400);
+
+  --success: var(--green-400);
+  --success-soft: rgba(71, 201, 138, 0.14);
+  --success-border: rgba(71, 201, 138, 0.35);
+  --success-text: var(--green-400);
+
+  --info: var(--blue-400);
+  --info-soft: rgba(106, 165, 244, 0.14);
+  --info-border: rgba(106, 165, 244, 0.35);
+  --info-text: var(--blue-400);
+
+  --neutral-soft: #1b2a42;
+  --neutral-border: #2d4066;
+  --neutral-text: #a9bbd6;
+
+  --violet-soft: rgba(154, 124, 232, 0.14);
+  --violet-border: rgba(154, 124, 232, 0.35);
+  --violet-text: var(--violet-400);
+
+  /* Dark chart steps are chosen against the dark surface and validated
+     separately — not an automatic lightening of the light set. */
+  --chart-1: #22a899;
+  --chart-2: #be8722;
+  --chart-3: #5d93e0;
+  --chart-4: #de5f55;
+  --chart-5: #9478da;
+  --chart-6: #3aa872;
+
+  --seq-0: #12212c;
+  --seq-1: #163540;
+  --seq-2: #174c56;
+  --seq-3: #12656d;
+  --seq-4: #0d8085;
+  --seq-5: #199c9b;
+  --seq-6: #3fb9b1;
+
+  --chart-grid: #223250;
+  --chart-axis: #6b7f9e;
+  --chart-surface: #121c2e;
+
+  --logo-primary: #ffffff;
+  --logo-secondary: var(--teal-400);
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 8px -2px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 12px 16px -4px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 20px 24px -4px rgba(0, 0, 0, 0.55), 0 8px 8px -4px rgba(0, 0, 0, 0.3);
+
+  --ring: 0 0 0 3px rgba(79, 209, 197, 0.4);
+  --ring-danger: 0 0 0 3px rgba(249, 112, 102, 0.35);
+
+  color-scheme: dark;
+}

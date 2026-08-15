@@ -1,0 +1,249 @@
+/* Leaflet ships its own look; this pulls it back into the product's palette
+   and makes the markers legible against a busy OSM tile. */
+
+.dm-map {
+  position: relative;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface-sunken);
+}
+.dm-map .leaflet-container {
+  background: var(--surface-sunken);
+  font-family: var(--sans);
+  font-size: 12px;
+}
+
+/* The default OSM raster is bright; in dark mode it is knocked back so the
+   markers and routes stay the loudest thing on the map. */
+[data-theme='dark'] .dm-map .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.86) saturate(0.6);
+}
+
+.dm-map .leaflet-control-attribution {
+  background: rgba(255, 255, 255, 0.82);
+  font-size: 10px;
+  color: var(--grey-600);
+  padding: 1px 6px;
+}
+[data-theme='dark'] .dm-map .leaflet-control-attribution {
+  background: rgba(11, 18, 32, 0.85);
+  color: var(--text-muted);
+}
+.dm-map .leaflet-control-attribution a {
+  color: var(--accent-text);
+}
+
+.dm-map .leaflet-control-zoom {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.dm-map .leaflet-control-zoom a {
+  background: var(--surface-card);
+  color: var(--text-strong);
+  border-bottom-color: var(--border);
+  width: 28px;
+  height: 28px;
+  line-height: 28px;
+  font-size: 17px;
+}
+.dm-map .leaflet-control-zoom a:hover {
+  background: var(--surface-hover);
+}
+
+/* --- markers ----------------------------------------------------------- */
+.dm-marker-wrap {
+  background: none;
+  border: none;
+}
+
+.dm-marker {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--marker) 26%, transparent);
+  position: relative;
+  transition: transform 0.15s ease;
+}
+.dm-marker-dot {
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: var(--marker);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+.dm-marker.is-selected {
+  transform: scale(1.3);
+  z-index: 500;
+}
+.dm-marker.is-selected .dm-marker-dot {
+  border-color: #fff;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--marker) 45%, transparent);
+}
+
+.dm-place {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.dm-place-origin {
+  background: var(--grey-700);
+}
+.dm-place-destination {
+  background: var(--navy-800);
+  border-radius: 3px;
+}
+
+.dm-cluster {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(15, 155, 142, 0.9);
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+
+/* --- popup ------------------------------------------------------------- */
+.dm-map .leaflet-popup-content-wrapper {
+  background: var(--surface-card);
+  color: var(--text);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border);
+  padding: 0;
+}
+.dm-map .leaflet-popup-content {
+  margin: 0;
+  width: 236px !important;
+}
+.dm-map .leaflet-popup-tip {
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+}
+.dm-map .leaflet-popup-close-button {
+  color: var(--text-muted);
+  padding: 6px 7px 0 0;
+}
+
+.dm-popup {
+  padding: 11px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.dm-popup-id {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text-strong);
+  font-family: var(--mono);
+}
+.dm-popup-lane {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+.dm-popup-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+  margin: 0;
+}
+.dm-popup-list dt {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-subtle);
+  font-weight: 600;
+}
+.dm-popup-list dd {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-strong);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sitting flush inside a card body, the map inherits the card's own frame. */
+.dm-map-flush {
+  border: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+
+/* --- control-tower split view ------------------------------------------ */
+.tower {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 0;
+  height: calc(100vh - var(--topbar-h));
+  overflow: hidden;
+}
+.tower-panel {
+  border-right: 1px solid var(--border);
+  background: var(--surface-card);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.tower-list {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+.tower-map {
+  min-width: 0;
+  position: relative;
+}
+.tower-map .dm-map {
+  height: 100%;
+  border: none;
+  border-radius: 0;
+}
+.tower-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background-color 0.1s ease;
+  border-left: 3px solid transparent;
+}
+.tower-item:hover {
+  background: var(--surface-hover);
+}
+.tower-item.is-active {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+.tower-item:focus-visible {
+  outline: none;
+  box-shadow: inset var(--ring);
+}
+
+@media (max-width: 900px) {
+  .tower {
+    grid-template-columns: 1fr;
+    grid-template-rows: 46vh 1fr;
+    height: calc(100vh - var(--topbar-h));
+  }
+  .tower-panel {
+    border-right: none;
+    border-top: 1px solid var(--border);
+    order: 2;
+  }
+  .tower-map {
+    order: 1;
+  }
+}

@@ -1,0 +1,362 @@
+/* Driver screens. Designed at 390px first: big targets, one column, the
+   primary action always within thumb reach. */
+
+.trip-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+  color: inherit;
+}
+.trip-card:hover {
+  text-decoration: none;
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+}
+.trip-card:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* The next trip is the one thing that matters on the Today screen. */
+.trip-card-next {
+  border: 1px solid var(--accent-border);
+  background: linear-gradient(180deg, var(--accent-soft) 0%, var(--surface-card) 62%);
+  padding: var(--space-5);
+}
+.trip-card-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+  margin-bottom: 6px;
+}
+
+/* Origin → destination, drawn as a two-stop route. */
+.leg {
+  display: flex;
+  gap: var(--space-3);
+  margin: var(--space-5) 0;
+}
+.leg-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 5px;
+  flex-shrink: 0;
+}
+.leg-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--text-muted);
+  flex-shrink: 0;
+}
+.leg-dot.is-end {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.leg-line {
+  width: 2px;
+  flex: 1;
+  min-height: 24px;
+  background: var(--border-strong);
+  margin: 3px 0;
+}
+.leg-stops {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  min-width: 0;
+}
+.leg-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+.leg-place {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+  line-height: var(--lh-snug);
+  margin-top: 3px;
+}
+.leg-meta {
+  font-size: 12px;
+  line-height: var(--lh-small);
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* Compact metric strip under a trip card. */
+.trip-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* Sticky action bar at the foot of a trip screen. */
+.action-bar {
+  position: sticky;
+  bottom: 8px;
+  margin-top: var(--space-6);
+  padding: var(--space-3);
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 6;
+}
+
+/* Checklist rows — whole row is the tap target. */
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 15px var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  width: 100%;
+  text-align: left;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+.check-row:hover {
+  border-color: var(--border-strong);
+}
+.check-row.is-done {
+  border-color: var(--success-border);
+  background: var(--success-soft);
+}
+.check-row.is-failed {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+}
+.check-row:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+.check-row-box {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-xs);
+  border: 2px solid var(--border-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: transparent;
+}
+.check-row.is-done .check-row-box {
+  background: var(--success);
+  border-color: var(--success);
+  color: #fff;
+}
+.check-row.is-failed .check-row-box {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+/* Signature pad */
+.sigpad {
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+}
+.sigpad canvas {
+  display: block;
+  width: 100%;
+  height: 170px;
+  cursor: crosshair;
+}
+.sigpad-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-subtle);
+  font-size: 13px;
+  pointer-events: none;
+}
+.sigpad.is-signed {
+  border-style: solid;
+  border-color: var(--success-border);
+}
+
+/* Scanner viewport */
+.scanner {
+  position: relative;
+  background: var(--navy-900);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.scanner-frame {
+  width: 72%;
+  aspect-ratio: 5 / 3;
+  border-radius: var(--radius-sm);
+  position: relative;
+}
+.scanner-corner {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border: 3px solid var(--teal-400);
+}
+.scanner-corner.tl {
+  top: 0;
+  left: 0;
+  border-right: none;
+  border-bottom: none;
+  border-radius: 6px 0 0 0;
+}
+.scanner-corner.tr {
+  top: 0;
+  right: 0;
+  border-left: none;
+  border-bottom: none;
+  border-radius: 0 6px 0 0;
+}
+.scanner-corner.bl {
+  bottom: 0;
+  left: 0;
+  border-right: none;
+  border-top: none;
+  border-radius: 0 0 0 6px;
+}
+.scanner-corner.br {
+  bottom: 0;
+  right: 0;
+  border-left: none;
+  border-top: none;
+  border-radius: 0 0 6px 0;
+}
+@keyframes scanline {
+  0%,
+  100% {
+    top: 6%;
+  }
+  50% {
+    top: 92%;
+  }
+}
+.scanner-line {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  height: 2px;
+  background: var(--teal-400);
+  box-shadow: 0 0 12px var(--teal-400);
+  animation: scanline 2.4s ease-in-out infinite;
+}
+.scanner-caption {
+  position: absolute;
+  bottom: 12px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 12px;
+}
+
+/* Documents list — offline availability is the important state. */
+.doc-tile {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 15px var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  width: 100%;
+  text-align: left;
+  color: inherit;
+}
+.doc-tile:hover {
+  border-color: var(--border-strong);
+  text-decoration: none;
+}
+
+/* Fullscreen document viewer */
+.doc-full {
+  position: fixed;
+  inset: 0;
+  background: var(--surface-page);
+  z-index: var(--z-modal);
+  display: flex;
+  flex-direction: column;
+}
+.doc-full-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-card);
+}
+.doc-full-body {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.doc-page {
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  width: 100%;
+  max-width: 420px;
+  aspect-ratio: 1 / 1.414;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-subtle);
+  box-shadow: var(--shadow-md);
+}
+
+/* History day grouping */
+.day-label {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-page);
+  padding: var(--space-4) 0 var(--space-2);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+/* Big status advance button */
+.advance-btn {
+  width: 100%;
+  min-height: 56px;
+  font-size: 16px;
+  font-weight: 600;
+}

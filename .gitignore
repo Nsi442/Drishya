@@ -1,0 +1,32 @@
+# --- frontend ---------------------------------------------------------------
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+
+# --- backend ----------------------------------------------------------------
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.class
+
+# --- IDE --------------------------------------------------------------------
+# IntelliJ's workspace file records window layout and open tabs — noise in a
+# diff. The rest of .idea can be useful to share, but not on a solo project.
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# --- OS ---------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- logs and runtime -------------------------------------------------------
+*.log
+npm-debug.log*
+yarn-error.log*
+logs/
+*.pid
+*.h2.db

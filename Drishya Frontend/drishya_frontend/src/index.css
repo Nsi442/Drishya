@@ -1,0 +1,10 @@
+/* Global stylesheets, loaded once from main.jsx.
+   ui.css belongs here rather than in the kit's barrel file: pages import the
+   kit's components directly (components/ui/Card.jsx and friends) rather than
+   through components/ui/index.js, so an import that lives only in the barrel
+   never actually runs. */
+@import './styles/tokens.css';
+@import './styles/base.css';
+@import './styles/utilities.css';
+@import './components/ui/ui.css';
+@import 'leaflet/dist/leaflet.css';
