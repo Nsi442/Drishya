@@ -13,6 +13,7 @@ import com.drishya.backend.repo.PositionRepository;
 import com.drishya.backend.repo.ShipmentRepository;
 import com.drishya.backend.repo.TripRepository;
 import com.drishya.backend.repo.VendorRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -73,6 +74,35 @@ class GeofenceSpatialTest {
 
     @Autowired
     VendorRepository vendors;
+
+    /**
+     * Waits for the seed before asserting anything.
+     *
+     * <p>Seeding moved off the startup path so a slow database cannot hold a
+     * deployment hostage — it now runs asynchronously once the application is
+     * already serving. That is the right behaviour in production and it means a
+     * test can observe an empty database if it asserts too early.
+     *
+     * <p>Waiting is deliberate rather than reverting to a synchronous seed for
+     * the tests: a suite that exercises a different startup path from the one
+     * that actually ships is a suite that can pass while production is broken.
+     */
+    @BeforeEach
+    void waitForSeed() {
+        long deadline = System.currentTimeMillis() + 90_000;
+        while (System.currentTimeMillis() < deadline) {
+            if (centres.count() > 0 && vendors.count() > 1 && shipments.count() > 0) {
+                return;
+            }
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Interrupted waiting for the seed", e);
+            }
+        }
+        throw new IllegalStateException("Seed did not complete within 90s");
+    }
 
     // --- the geofence -------------------------------------------------------
 

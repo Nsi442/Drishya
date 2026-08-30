@@ -25,10 +25,11 @@ import java.util.ArrayList;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.ApplicationArguments;
-import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,7 +43,7 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Component
 @Order(1)
-public class DataSeeder implements ApplicationRunner {
+public class DataSeeder {
 
     private static final Logger log = LoggerFactory.getLogger(DataSeeder.class);
 
@@ -79,9 +80,30 @@ public class DataSeeder implements ApplicationRunner {
         this.tripSeeder = tripSeeder;
     }
 
-    @Override
+    /**
+     * Seeds after the application is already serving, not before.
+     *
+     * <p><b>This used to be an ApplicationRunner, and that broke the deploy.</b>
+     * Spring holds readiness at OUT_OF_SERVICE until every runner returns, so a
+     * seed that takes minutes — which it does the moment the database is a
+     * network hop away rather than on localhost — looks to the platform like a
+     * service that never came up. Render killed the container, restarted it,
+     * and the seeder then found its own half-written vendors and skipped,
+     * leaving a database with reference data and no users. The application was
+     * correct throughout; it was simply never allowed to finish.
+     *
+     * <p>Running on ApplicationReadyEvent, asynchronously, inverts that: the
+     * service reports healthy immediately and populates itself behind the
+     * scenes. A demo database that fills in over the first minute is a far
+     * better failure mode than one that never deploys.
+     *
+     * <p>Still transactional, so a seed interrupted half way rolls back rather
+     * than leaving the partial state that caused the skip.
+     */
+    @Async
+    @EventListener(ApplicationReadyEvent.class)
     @Transactional
-    public void run(ApplicationArguments args) {
+    public void seedOnStartup() {
         if (vendors.count() > 0) {
             log.info("Database already populated — skipping seed");
             return;
