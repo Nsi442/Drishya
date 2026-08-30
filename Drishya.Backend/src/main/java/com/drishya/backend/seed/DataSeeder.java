@@ -137,10 +137,25 @@ public class DataSeeder {
         // an application somebody can sign in to and look at.
         inTransaction("users", () -> { seedUsers(vendorList, driverList, sites); return null; });
 
-        inTransaction("shipments", () -> {
-            shipmentSeeder.seed(vendorList, sites, vehicleList, driverList);
-            return null;
-        });
+        // Shipments in chunks, each its own transaction.
+        //
+        // This is the phase that failed on the deployed database while every
+        // other one committed. It is an order of magnitude larger than the
+        // rest — sixty consignments, each with its events, documents and sensor
+        // readings, then the alerts and appointments derived from them, well
+        // over a thousand rows — and one transaction that size stays open long
+        // enough across a region boundary to be killed.
+        //
+        // Splitting it means a slow link costs some consignments rather than
+        // all of them, and the seed degrades instead of vanishing.
+        int chunks = shipmentSeeder.chunkCount();
+        for (int chunk = 0; chunk < chunks; chunk++) {
+            final int index = chunk;
+            inTransaction("shipments " + (index + 1) + "/" + chunks, () -> {
+                shipmentSeeder.seedChunk(index, vendorList, sites, vehicleList, driverList);
+                return null;
+            });
+        }
 
         // Lanes and the shared history: the ETA engine has nothing to divide by
         // without them.

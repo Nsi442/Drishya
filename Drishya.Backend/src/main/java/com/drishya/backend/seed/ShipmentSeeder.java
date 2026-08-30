@@ -79,11 +79,32 @@ public class ShipmentSeeder {
         this.derivedSeeder = derivedSeeder;
     }
 
-    public void seed(List<Vendor> vendors, List<FulfilmentCentre> sites,
-                     List<Vehicle> vehicles, List<Driver> drivers) {
-        Rng rng = new Rng(SEED);
-        Instant now = Instant.now();
+    /** Consignments per chunk. Small enough that no one transaction runs long. */
+    private static final int CHUNK = 10;
 
+    /** How many chunks the caller should ask for. */
+    public int chunkCount() {
+        int total = STATUS_MIX.values().stream().mapToInt(Integer::intValue).sum();
+        // One extra pass at the end for the derived alerts, appointments and
+        // receiving exceptions, which need every consignment to exist first.
+        return (int) Math.ceil(total / (double) CHUNK) + 1;
+    }
+
+    /**
+     * Seeds one slice of the dataset, in the caller's transaction.
+     *
+     * <p>Chunked because this phase is an order of magnitude larger than any
+     * other and was the one that failed on the deployed database while the rest
+     * committed. The RNG is re-seeded from the same constant and fast-forwarded
+     * to the chunk's offset, so the data stays identical whether it is written
+     * in one pass or six — a seeded dataset that changed shape depending on
+     * transaction boundaries would be worse than a slow one.
+     *
+     * <p>The final chunk builds the derived rows, which is why it needs every
+     * consignment already present.
+     */
+    public void seedChunk(int chunk, List<Vendor> vendors, List<FulfilmentCentre> sites,
+                          List<Vehicle> vehicles, List<Driver> drivers) {
         List<ShipmentStatus> queue = new ArrayList<>();
         STATUS_MIX.forEach((status, count) -> {
             for (int i = 0; i < count; i++) {
@@ -91,12 +112,34 @@ public class ShipmentSeeder {
             }
         });
 
-        List<Shipment> saved = new ArrayList<>();
-        for (int i = 0; i < queue.size(); i++) {
-            saved.add(shipments.save(build(queue.get(i), i, rng, now, vendors, sites, vehicles, drivers)));
+        Instant now = Instant.now();
+        int firstIndex = chunk * CHUNK;
+
+        // Derived pass: everything exists, so build what hangs off it.
+        if (firstIndex >= queue.size()) {
+            derivedSeeder.seed(shipments.findAllBy(), now);
+            return;
         }
 
-        derivedSeeder.seed(saved, now);
+        // Deterministic regardless of chunking: same seed, wound forward to
+        // this slice so each consignment gets the values it always had.
+        Rng rng = new Rng(SEED);
+        for (int i = 0; i < firstIndex; i++) {
+            build(queue.get(i), i, rng, now, vendors, sites, vehicles, drivers);
+        }
+
+        int lastIndex = Math.min(firstIndex + CHUNK, queue.size());
+        for (int i = firstIndex; i < lastIndex; i++) {
+            shipments.save(build(queue.get(i), i, rng, now, vendors, sites, vehicles, drivers));
+        }
+    }
+
+    /** Whole-dataset seed, for local use where one transaction is fine. */
+    public void seed(List<Vendor> vendors, List<FulfilmentCentre> sites,
+                     List<Vehicle> vehicles, List<Driver> drivers) {
+        for (int chunk = 0; chunk < chunkCount(); chunk++) {
+            seedChunk(chunk, vendors, sites, vehicles, drivers);
+        }
     }
 
     private Shipment build(ShipmentStatus status, int index, Rng rng, Instant now,
