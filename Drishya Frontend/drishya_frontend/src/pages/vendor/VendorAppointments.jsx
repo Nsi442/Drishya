@@ -80,7 +80,7 @@ export default function VendorAppointments() {
 
   const docks = useMemo(() => db.docks.filter((d) => d.fcId === request.fcId), [request.fcId])
   const bookableShipments = useMemo(
-    () => db.shipments.filter((s) => s.status === 'booked' || s.status === 'picked_up').slice(0, 25),
+    () => db.shipments.filter((s) => s.status === 'created' || s.status === 'docs_pending').slice(0, 25),
     [],
   )
 

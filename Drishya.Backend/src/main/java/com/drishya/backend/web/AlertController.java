@@ -12,6 +12,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import com.drishya.backend.config.AuthTokenFilter;
+import com.drishya.backend.service.CallerService;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -20,17 +23,25 @@ import org.springframework.web.bind.annotation.RestController;
 public class AlertController {
 
     private final AlertService alertService;
+    private final CallerService callers;
 
-    public AlertController(AlertService alertService) {
+    public AlertController(AlertService alertService,
+                           CallerService callers) {
+        this.callers = callers;
         this.alertService = alertService;
     }
 
     @GetMapping("/alerts")
-    public List<AlertDto> alerts(@RequestParam(required = false) String severity,
+    public List<AlertDto> alerts(
+            @org.springframework.web.bind.annotation.RequestAttribute(
+                    com.drishya.backend.config.AuthTokenFilter.USER_ID_ATTRIBUTE) String userId,
+            @RequestParam(required = false) String severity,
                                  @RequestParam(required = false) String read,
                                  @RequestParam(required = false) String search,
                                  @RequestParam(required = false) String shipmentId) {
-        return alertService.list(severity, read, search, shipmentId);
+        // Scoped to the caller. The unscoped listing this replaced handed every
+        // authenticated user the whole cluster's alert feed.
+        return alertService.listFor(callers.resolve(userId), severity, read, search, shipmentId);
     }
 
     @PostMapping("/alerts/read")
@@ -50,11 +61,13 @@ public class AlertController {
     }
 
     @GetMapping("/exceptions")
-    public List<ExceptionDto> exceptions(@RequestParam(required = false) String fcId,
+    public List<ExceptionDto> exceptions(
+            @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId,
+            @RequestParam(required = false) String fcId,
                                          @RequestParam(required = false) String status,
                                          @RequestParam(required = false) String type,
                                          @RequestParam(required = false) String search) {
-        return alertService.listExceptions(fcId, status, type, search);
+        return alertService.listExceptions(callers.resolve(userId), fcId, status, type, search);
     }
 
     @PatchMapping("/exceptions/{id}")

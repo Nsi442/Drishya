@@ -41,10 +41,19 @@
 }
 .sidebar-brand {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  /* The role stacks under the wordmark rather than sitting beside it:
+     "Fulfilment Centre" needs 117px and only 96px is free next to a 109px
+     lockup, so side by side it truncated to "FULFILMENT CENTR". Shrinking the
+     type does not recover 21px at any legible size. */
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
   min-width: 0;
   flex: 1;
+}
+.shell.is-collapsed .sidebar-brand {
+  align-items: center;
 }
 .sidebar-brand:hover {
   text-decoration: none;
@@ -170,6 +179,23 @@
   justify-content: center;
 }
 
+/* The rail's tooltips have to clear two clipping boxes: .sidebar-nav scrolls,
+   and .sidebar is overflow:hidden. Neither can be relaxed — the nav still has
+   to scroll on a short viewport. So the tooltip is positioned against the
+   viewport instead: `left` clears the rail, and `top: auto` leaves it at its
+   static position, i.e. beside the icon it belongs to.
+   Being fixed also takes it out of the nav's scrollable area. As an absolutely
+   positioned child it was an 88px box inside a 67px one, which is what put a
+   horizontal scrollbar on the collapsed rail. */
+.shell.is-collapsed .sidebar-nav .tip-body {
+  position: fixed;
+  left: calc(var(--sidebar-rail-w) + 8px);
+  top: auto;
+  bottom: auto;
+  /* Nudges the static position onto the icon's centre line. */
+  transform: translateY(4px);
+}
+
 .sidebar-user {
   display: flex;
   align-items: center;
@@ -185,6 +211,10 @@
   text-decoration: none;
 }
 .sidebar-user-text {
+  /* Without the column flex the two spans are inline and the name runs
+     straight into the organisation — "Priya RaghavanAnand Auto Components". */
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   flex: 1;
 }

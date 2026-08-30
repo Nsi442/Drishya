@@ -9,6 +9,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import com.drishya.backend.config.AuthTokenFilter;
+import com.drishya.backend.service.CallerService;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -18,16 +21,22 @@ public class DocumentController {
 
     private final DocumentService documentService;
 
-    public DocumentController(DocumentService documentService) {
+    private final CallerService callers;
+
+    public DocumentController(DocumentService documentService,
+                              CallerService callers) {
+        this.callers = callers;
         this.documentService = documentService;
     }
 
     @GetMapping
-    public List<DocumentDto> list(@RequestParam(required = false) String status,
+    public List<DocumentDto> list(
+            @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId,
+            @RequestParam(required = false) String status,
                                   @RequestParam(required = false) String type,
                                   @RequestParam(required = false) String search,
                                   @RequestParam(required = false) String shipmentId) {
-        return documentService.list(status, type, search, shipmentId);
+        return documentService.list(callers.resolve(userId), status, type, search, shipmentId);
     }
 
     @PostMapping("/{documentId}/reupload")

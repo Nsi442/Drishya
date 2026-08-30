@@ -66,11 +66,42 @@ public class ShipmentService {
 
     // --- reads -----------------------------------------------------------
 
-    /** Filters, sorts and pages in one pass. */
+    /**
+     * Which shipments this caller may see at all.
+     *
+     * <p><b>This is the security boundary, and it is deliberately not the same
+     * thing as {@code ShipmentFilter.vendorId}.</b> That field is a query
+     * parameter — something the browser asks for — and treating a value the
+     * caller supplies as the thing that limits what the caller may read is how
+     * this endpoint came to return all 71 shipments across 12 vendors to
+     * anybody holding a valid token.
+     *
+     * <p>Applied first, at the repository, so a user's filters only ever narrow
+     * a set that was already theirs. Fails closed on an unrecognised role.
+     */
+    private List<Shipment> scopedFor(CallerService.Caller caller) {
+        if (caller == null || caller.role() == null) {
+            return List.of();
+        }
+        return switch (caller.role()) {
+            case VENDOR_ADMIN, DISPATCHER -> caller.tenantId() == null
+                    ? List.of() : shipments.findByVendorId(caller.tenantId());
+            // A receiving desk sees inbound to their site from every vendor —
+            // cross-tenant by necessity, bounded to one fulfilment centre.
+            case FC -> caller.orgId() == null
+                    ? List.of() : shipments.findByFulfilmentCentreId(caller.orgId());
+            // Only what is on their vehicle.
+            case DRIVER -> caller.driverId() == null
+                    ? List.of() : shipments.findByDriverId(caller.driverId());
+        };
+    }
+
+    /** Filters, sorts and pages in one pass, within what the caller may see. */
     @Transactional(readOnly = true)
-    public PageDto<ShipmentDto> list(ShipmentFilter filter, String sortKey, String direction,
+    public PageDto<ShipmentDto> list(CallerService.Caller caller, ShipmentFilter filter,
+                                     String sortKey, String direction,
                                      int page, int pageSize) {
-        List<ShipmentDto> rows = shipments.findAllBy().stream()
+        List<ShipmentDto> rows = scopedFor(caller).stream()
                 .filter(filter::matches)
                 .map(s -> mapper.toDto(s, false))
                 .sorted(comparator(sortKey, direction))
@@ -78,10 +109,10 @@ public class ShipmentService {
         return PageDto.of(rows, page, pageSize);
     }
 
-    /** Unpaginated — for maps, boards and the live tick. */
+    /** Unpaginated — for maps, boards and the live tick. Same boundary. */
     @Transactional(readOnly = true)
-    public List<ShipmentDto> listAll(ShipmentFilter filter) {
-        return shipments.findAllBy().stream()
+    public List<ShipmentDto> listAll(CallerService.Caller caller, ShipmentFilter filter) {
+        return scopedFor(caller).stream()
                 .filter(filter::matches)
                 .map(s -> mapper.toDto(s, false))
                 .sorted(Comparator.comparing(ShipmentDto::promisedAt,
@@ -89,10 +120,17 @@ public class ShipmentService {
                 .toList();
     }
 
-    /** The detail view, with events, documents and telemetry attached. */
+    /**
+     * The detail view, with events, documents and telemetry attached.
+     *
+     * <p>A shipment belonging to someone else reports as not found rather than
+     * forbidden. A 403 on a specific id confirms that id exists, which is
+     * already more than another tenant should learn.
+     */
     @Transactional(readOnly = true)
-    public ShipmentDto get(String id) {
+    public ShipmentDto get(String id, CallerService.Caller caller) {
         Shipment s = shipments.findWithDetailById(id)
+                .filter(candidate -> visibleTo(candidate, caller))
                 .orElseThrow(() -> ApiException.notFound("No shipment found with reference " + id + "."));
         // Touch the lazy collections while the session is still open.
         s.getDocuments().size();
@@ -165,7 +203,7 @@ public class ShipmentService {
         s.setFulfilmentCentre(fc);
         s.setVehicle(vehicle);
         s.setDriver(driver);
-        s.setStatus(ShipmentStatus.BOOKED);
+        s.setStatus(ShipmentStatus.CREATED);
         s.setPriority(request.priority() == null ? Priority.NORMAL : request.priority());
         s.setOrigin(new Place(originPoint.getLat(), originPoint.getLng(),
                 vendor.getName() + " — " + vendor.getCity()));
@@ -197,7 +235,7 @@ public class ShipmentService {
         s.setDockId(request.dockId());
         s.setUpdatedAt(now);
 
-        s.addEvent(new ShipmentEvent(ShipmentStatus.BOOKED, "Shipment booked",
+        s.addEvent(new ShipmentEvent(ShipmentStatus.CREATED, "Shipment booked",
                 "Consignment created and carrier assigned", now));
 
         if (request.documents() != null) {
@@ -224,8 +262,9 @@ public class ShipmentService {
      * and a consignment that has been received cannot un-arrive.
      */
     @Transactional
-    public ShipmentDto advance(String id, Requests.AdvanceShipment request) {
-        Shipment s = load(id);
+    public ShipmentDto advance(String id, Requests.AdvanceShipment request,
+                               CallerService.Caller caller) {
+        Shipment s = load(id, caller);
         ShipmentStatus next = request.status();
 
         if (s.getStatus() == ShipmentStatus.CANCELLED) {
@@ -246,7 +285,7 @@ public class ShipmentService {
                 s.setProgress(0.97);
                 s.setSpeedKmph(0);
             }
-            case UNLOADING -> s.setProgress(0.99);
+            case AT_DOCK -> s.setProgress(0.99);
             case DELIVERED -> {
                 s.setDeliveredAt(now);
                 s.setProgress(1);
@@ -265,8 +304,9 @@ public class ShipmentService {
     }
 
     @Transactional
-    public ShipmentDto submitPod(String id, Requests.SubmitPod request) {
-        Shipment s = load(id);
+    public ShipmentDto submitPod(String id, Requests.SubmitPod request,
+                                 CallerService.Caller caller) {
+        Shipment s = load(id, caller);
         Instant now = Instant.now();
 
         if (request.cartonsReceived() > s.getCartons()) {
@@ -299,8 +339,9 @@ public class ShipmentService {
     }
 
     @Transactional
-    public ShipmentDto saveChecklist(String id, Requests.SaveChecklist request) {
-        Shipment s = load(id);
+    public ShipmentDto saveChecklist(String id, Requests.SaveChecklist request,
+                                     CallerService.Caller caller) {
+        Shipment s = load(id, caller);
         if (request.sealNumber() != null && !request.sealNumber().isBlank()) {
             s.setSealNumber(request.sealNumber());
         }
@@ -309,16 +350,16 @@ public class ShipmentService {
     }
 
     @Transactional
-    public ShipmentDto assignDock(String id, String dockId) {
-        Shipment s = load(id);
+    public ShipmentDto assignDock(String id, String dockId, CallerService.Caller caller) {
+        Shipment s = load(id, caller);
         s.setDockId(dockId);
         s.setUpdatedAt(Instant.now());
         return mapper.toDto(shipments.save(s), true);
     }
 
     @Transactional
-    public ShipmentDto cancel(String id, String reason) {
-        Shipment s = load(id);
+    public ShipmentDto cancel(String id, String reason, CallerService.Caller caller) {
+        Shipment s = load(id, caller);
         if (s.getStatus() == ShipmentStatus.DELIVERED) {
             throw ApiException.badRequest("ALREADY_DELIVERED",
                     "That consignment has already been delivered.");
@@ -336,7 +377,27 @@ public class ShipmentService {
      * shape of the write is the same, which is the point.
      */
     @Transactional
-    public int commitLivePositions(List<Requests.LivePosition> updates) {
+    /**
+     * Commits the browser-side live tick.
+     *
+     * <p>This predates the ETA engine and is a bulk endpoint taking ids in the
+     * body, which is how it escaped the write-path audit — that only probed
+     * {@code /{id}/...} routes. Unscoped, it let any tenant write position,
+     * delay and arrival onto <b>any</b> consignment in the cluster: a competitor
+     * could stamp a shipment 999,999 minutes late with a reason of their
+     * choosing and get back {@code applied: 1}.
+     *
+     * <p><b>Arrival times are no longer taken from the client.</b> The tick
+     * still reports where the browser thinks a vehicle is — that is a
+     * simulation and is labelled as one — but predictedAt and delayMin are
+     * owned by the ETA engine, which derives them from ingested positions and
+     * pooled history and refuses to answer from a stale fix. Accepting both was
+     * how a shipment ended up showing "108 h late": the browser extrapolated
+     * from seeded timestamps days in the past and the server wrote it down
+     * without question. Two writers, one field, no arbiter.
+     */
+    public int commitLivePositions(List<Requests.LivePosition> updates,
+                                   CallerService.Caller caller) {
         Map<String, Shipment> byId = shipments.findAllById(
                         updates.stream().map(Requests.LivePosition::id).toList()).stream()
                 .collect(java.util.stream.Collectors.toMap(Shipment::getId, Function.identity()));
@@ -344,20 +405,14 @@ public class ShipmentService {
         int applied = 0;
         for (Requests.LivePosition update : updates) {
             Shipment s = byId.get(update.id());
-            if (s == null || !s.isActive()) {
+            // Ownership, per row. A bulk endpoint is still a write.
+            if (s == null || !s.isActive() || !visibleTo(s, caller)) {
                 continue;
             }
             s.setProgress(update.progress());
             s.setPosition(new GeoPoint(update.lat(), update.lng()));
             s.setRemainingKm(update.remainingKm());
             s.setSpeedKmph(update.speedKmph());
-            if (update.predictedAt() != null) {
-                s.setPredictedAt(Instant.ofEpochMilli(update.predictedAt()));
-            }
-            if (update.delayMin() != null) {
-                s.setDelayMin(update.delayMin());
-            }
-            s.setDelayReason(update.delayReason());
             s.setUpdatedAt(Instant.now());
             applied++;
         }
@@ -393,8 +448,27 @@ public class ShipmentService {
 
     // --- helpers ---------------------------------------------------------
 
-    private Shipment load(String id) {
+    /**
+     * Loads a shipment the caller is actually entitled to act on.
+     *
+     * <p><b>Every write path goes through here, which is the point.</b> This
+     * used to load by id alone, so any authenticated user could advance, dock,
+     * cancel or sign for any consignment in the cluster by knowing its
+     * reference — a competitor could cancel your delivery, and the only trace
+     * would be a status change you did not make. Reads were scoped before
+     * writes were, which is the wrong way round: reading someone's data is bad,
+     * changing it is worse.
+     *
+     * <p>Putting the check in the shared loader rather than in each method
+     * means a write path added later inherits it by default instead of
+     * remembering to ask.
+     *
+     * <p>Reports not-found rather than forbidden, for the same reason the read
+     * path does: a 403 on a specific id confirms that id exists.
+     */
+    private Shipment load(String id, CallerService.Caller caller) {
         return shipments.findById(id)
+                .filter(s -> visibleTo(s, caller))
                 .orElseThrow(() -> ApiException.notFound("No shipment found with reference " + id + "."));
     }
 
@@ -422,6 +496,21 @@ public class ShipmentService {
     }
 
     /** Query parameters, resolved into a single predicate. */
+    /** Single-row form of scopedFor, for the detail path. */
+    public boolean visibleTo(Shipment s, CallerService.Caller caller) {
+        if (caller == null || caller.role() == null) {
+            return false;
+        }
+        return switch (caller.role()) {
+            case VENDOR_ADMIN, DISPATCHER -> s.getVendor() != null && caller.tenantId() != null
+                    && caller.tenantId().equals(s.getVendor().getId());
+            case FC -> s.getFulfilmentCentre() != null && caller.orgId() != null
+                    && caller.orgId().equals(s.getFulfilmentCentre().getId());
+            case DRIVER -> s.getDriver() != null && caller.driverId() != null
+                    && caller.driverId().equals(s.getDriver().getId());
+        };
+    }
+
     public record ShipmentFilter(String search, String status, String fcId, String vendorId,
                                  String carrier, String lane, Boolean delayedOnly, String priority) {
 

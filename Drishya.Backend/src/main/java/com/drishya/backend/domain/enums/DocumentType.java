@@ -15,7 +15,10 @@ public enum DocumentType {
     INVOICE("invoice"),
     GST("gst"),
     LR("lr"),
-    ASN("asn");
+    ASN("asn"),
+
+    /** Proof of delivery, captured by the driver at the bay. */
+    POD("pod");
 
     private final String wire;
 

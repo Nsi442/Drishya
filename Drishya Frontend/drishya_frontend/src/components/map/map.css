@@ -9,6 +9,14 @@
   background: var(--surface-sunken);
 }
 .dm-map .leaflet-container {
+  /* Leaflet sizes itself from its container and collapses to zero without an
+     explicit height. The wrapper carries the height, so the map must fill it.
+     ShipmentMap set this inline and TripMap did not, which rendered a 460px
+     white box with six tiles loaded invisibly inside a zero-height element —
+     the map was working perfectly and could not be seen. Declared here so every
+     map in this wrapper inherits it rather than each remembering. */
+  height: 100%;
+  width: 100%;
   background: var(--surface-sunken);
   font-family: var(--sans);
   font-size: 12px;
@@ -246,4 +254,58 @@
   .tower-map {
     order: 1;
   }
+}
+
+/* --- live trips ----------------------------------------------------------- */
+/* Layers drawn from recorded backend positions, not the browser simulation. */
+
+.dm-vehicle {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--surface-card);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
+  background: var(--chart-1);
+}
+
+/* Colour tracks risk, but the popup always names the state in words — the dot
+   alone is never the only signal. */
+.dm-vehicle.ok      { background: var(--success); }
+.dm-vehicle.early   { background: var(--chart-3); }
+.dm-vehicle.at-risk { background: var(--warn); }
+.dm-vehicle.late    { background: var(--danger); }
+
+.dm-dock {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-xs);
+  background: var(--text-muted);
+  border: 2px solid var(--surface-card);
+}
+
+.dm-popup-muted {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: var(--lh-small);
+}
+
+/* Sits over the map when nothing is reporting, so an empty map explains itself
+   rather than looking broken. */
+.dm-map-note {
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-5);
+  transform: translateX(-50%);
+  z-index: 500;
+  max-width: 46ch;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface-card);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: var(--lh-base);
+  text-align: center;
 }

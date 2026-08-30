@@ -28,6 +28,7 @@ import com.drishya.backend.dto.DockDto;
 import com.drishya.backend.dto.DocumentDto;
 import com.drishya.backend.dto.DriverDto;
 import com.drishya.backend.dto.ExceptionDto;
+import com.drishya.backend.domain.Geo;
 import com.drishya.backend.dto.FulfilmentCentreDto;
 import com.drishya.backend.dto.IncidentDto;
 import com.drishya.backend.dto.ShipmentDto;
@@ -106,7 +107,8 @@ public class Mapper {
                 millis(s.getSlotStart()),
                 millis(s.getSlotEnd()),
                 millis(s.getUpdatedAt()),
-                s.getDelayMin(),
+                // No prediction means no delay figure, not a delay of zero.
+                s.getPredictedAt() == null ? null : s.getDelayMin(),
                 s.getDelayReason(),
                 s.getCommodity(),
                 s.getCartons(),
@@ -340,7 +342,12 @@ public class Mapper {
                 fc.getLocation().getLng(),
                 fc.getDockCount(),
                 fc.getOpeningHour(),
-                fc.getClosingHour());
+                fc.getClosingHour(),
+                // Geometry never leaves the entity layer; these are the plain
+                // doubles the browser draws the geofence circle from.
+                fc.getDockLocation() == null ? null : Geo.lat(fc.getDockLocation()),
+                fc.getDockLocation() == null ? null : Geo.lon(fc.getDockLocation()),
+                fc.getGeofenceRadiusM());
     }
 
     public VendorDto toDto(Vendor v, int shipments, int delivered, int onTimePct, int docAccuracyPct,

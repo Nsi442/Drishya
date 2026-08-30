@@ -1,3 +1,4 @@
+import { ROLE_PORTAL, PORTALS } from '../../lib/constants.js'
 // Navigation is declared once and consumed by the sidebar, the command palette
 // and the shortcuts sheet, so a new page appears in all three at once.
 
@@ -6,10 +7,13 @@ export const VENDOR_NAV = [
   { to: '/vendor', label: 'Dashboard', icon: 'grid', end: true },
   { to: '/vendor/shipments', label: 'Shipments', icon: 'truck' },
   { to: '/vendor/live-map', label: 'Control tower', icon: 'map' },
+  // Recorded backend telemetry, as opposed to the browser simulation above.
+  { to: '/vendor/trips', label: 'Live trips', icon: 'navigation' },
   { to: '/vendor/appointments', label: 'Dock appointments', icon: 'calendar' },
   { section: 'Compliance' },
   { to: '/vendor/documents', label: 'Documents', icon: 'file' },
   { to: '/vendor/alerts', label: 'Alerts', icon: 'bell', badge: 'alerts' },
+  { to: '/vendor/exceptions', label: 'Exceptions', icon: 'alert' },
   { section: 'Network' },
   { to: '/vendor/carriers', label: 'Carriers & vehicles', icon: 'package' },
   { to: '/vendor/drivers', label: 'Drivers', icon: 'users' },
@@ -55,7 +59,9 @@ export const EXTRA_DESTINATIONS = {
 }
 
 export function navFor(role) {
-  if (role === 'vendor') return VENDOR_NAV
-  if (role === 'fc') return FC_NAV
+  // Keyed off the portal: vendor_admin and dispatcher share one sidebar.
+  const portal = ROLE_PORTAL[role]
+  if (portal === PORTALS.VENDOR) return VENDOR_NAV
+  if (portal === PORTALS.FC) return FC_NAV
   return []
 }

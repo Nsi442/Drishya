@@ -4,7 +4,17 @@
 // Relative, so the Vite dev proxy (see vite.config.js) forwards it to the
 // Spring Boot backend and the browser stays on one origin. Set VITE_API_BASE to
 // point at a deployed API instead.
-const BASE = import.meta.env.VITE_API_BASE ?? '/api'
+// Nullish coalescing is deliberately NOT used here. `??` only falls back on
+// null and undefined, so an env var set to an EMPTY STRING — which is exactly
+// what a Docker build arg or a blank Vercel variable produces — would leave the
+// base as '' and send every request to /auth/login instead of /api/auth/login.
+//
+// That failure is horrible to diagnose: nginx answers the unprefixed path from
+// try_files with a 405 and an HTML body, the client cannot parse it, and the
+// user sees a generic "Could not complete sign in" while the API is perfectly
+// healthy and curl against it succeeds.
+const CONFIGURED_BASE = import.meta.env.VITE_API_BASE
+const BASE = CONFIGURED_BASE && CONFIGURED_BASE.trim() !== '' ? CONFIGURED_BASE.trim() : '/api'
 
 // Flipped by the "simulate a failure" control in Settings → Integrations so the
 // error states on every page can be demonstrated without unplugging anything.

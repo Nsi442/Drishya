@@ -15,7 +15,7 @@ import useDocumentTitle from '../../hooks/useDocumentTitle.js'
 import './auth.css'
 
 const DEMO_ROLES = [
-  { role: ROLES.VENDOR, icon: 'package', title: 'Vendor', desc: 'Dispatch desk — shipments, documents, control tower' },
+  { role: ROLES.VENDOR_ADMIN, icon: 'package', title: 'Vendor', desc: 'Dispatch desk — shipments, documents, control tower' },
   { role: ROLES.DRIVER, icon: 'truck', title: 'Driver', desc: 'Phone app — today’s trips, proof of delivery, incidents' },
   { role: ROLES.FC, icon: 'dock', title: 'Fulfilment centre', desc: 'Inbound desk — arrival board, docks, receiving' },
 ]

@@ -53,7 +53,20 @@ export function StatusPill({ status, kind = 'shipment', size, className }) {
 // The delta between promised and predicted arrival, coloured by how bad it is.
 // Reads "on time", "12 min early" or "1 h 40 m late" — never a bare number.
 export function DelayPill({ minutes, size, showEarly = true, className }) {
-  const m = Math.round(minutes ?? 0)
+  // No figure at all is not the same as zero. Defaulting a missing delay to 0
+  // rendered a confident "On time" for a consignment the platform had lost
+  // track of — the most misleading thing this component could say, because it
+  // is the reassuring answer given in the one case nobody should be reassured.
+  if (minutes === null || minutes === undefined) {
+    return (
+      <Badge tone="neutral" size={size} className={className}>
+        <span className="status-dot" aria-hidden="true" />
+        No estimate
+      </Badge>
+    )
+  }
+
+  const m = Math.round(minutes)
 
   if (m > 15) {
     const tone = m > 90 ? 'danger' : 'warn'

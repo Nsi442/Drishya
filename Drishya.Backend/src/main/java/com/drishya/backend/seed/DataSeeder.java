@@ -5,6 +5,7 @@ import com.drishya.backend.domain.Carrier;
 import com.drishya.backend.domain.Dock;
 import com.drishya.backend.domain.Driver;
 import com.drishya.backend.domain.FulfilmentCentre;
+import com.drishya.backend.domain.Geo;
 import com.drishya.backend.domain.GeoPoint;
 import com.drishya.backend.domain.Vehicle;
 import com.drishya.backend.domain.Vendor;
@@ -57,10 +58,14 @@ public class DataSeeder implements ApplicationRunner {
     private final AppUserRepository users;
     private final PasswordEncoder passwordEncoder;
     private final ShipmentSeeder shipmentSeeder;
+    private final LaneSeeder laneSeeder;
+    private final TripSeeder tripSeeder;
 
     public DataSeeder(VendorRepository vendors, FulfilmentCentreRepository centres, DockRepository docks,
                       CarrierRepository carriers, VehicleRepository vehicles, DriverRepository drivers,
-                      AppUserRepository users, PasswordEncoder passwordEncoder, ShipmentSeeder shipmentSeeder) {
+                      AppUserRepository users, PasswordEncoder passwordEncoder, ShipmentSeeder shipmentSeeder,
+                      LaneSeeder laneSeeder,
+                      TripSeeder tripSeeder) {
         this.vendors = vendors;
         this.centres = centres;
         this.docks = docks;
@@ -70,6 +75,8 @@ public class DataSeeder implements ApplicationRunner {
         this.users = users;
         this.passwordEncoder = passwordEncoder;
         this.shipmentSeeder = shipmentSeeder;
+        this.laneSeeder = laneSeeder;
+        this.tripSeeder = tripSeeder;
     }
 
     @Override
@@ -91,6 +98,15 @@ public class DataSeeder implements ApplicationRunner {
 
         shipmentSeeder.seed(vendorList, sites, vehicleList, driverList);
 
+        // Lanes and the shared history last: they hang off the sites, and
+        // the ETA engine has nothing to divide by without them.
+        laneSeeder.seed();
+
+        // Vehicles on the road, last reporting a minute ago. Without these the
+        // live map — the page the product is about — opens empty on a fresh
+        // database and needs the simulator run before it shows anything.
+        tripSeeder.seed();
+
         log.info("Seed complete: {} vendors, {} vehicles, {} drivers, {} sites",
                 vendorList.size(), vehicleList.size(), driverList.size(), sites.size());
     }
@@ -98,10 +114,19 @@ public class DataSeeder implements ApplicationRunner {
     private List<FulfilmentCentre> seedCentres() {
         List<FulfilmentCentre> saved = new ArrayList<>();
         for (ReferenceData.Site site : ReferenceData.FULFILMENT_CENTRES) {
-            FulfilmentCentre fc = new FulfilmentCentre(
-                    site.id(), site.name(), site.city(),
-                    new GeoPoint(site.lat(), site.lng()),
-                    site.docks(), 6, 22);
+            // Setters rather than the all-args constructor: the entity gained a
+            // dock location and a geofence radius when PostGIS landed, and a
+            // positional constructor silently reorders when that happens.
+            FulfilmentCentre fc = new FulfilmentCentre();
+            fc.setId(site.id());
+            fc.setName(site.name());
+            fc.setCity(site.city());
+            fc.setLocation(new GeoPoint(site.lat(), site.lng()));
+            fc.setDockCount(site.docks());
+            fc.setOpeningHour(6);
+            fc.setClosingHour(22);
+            fc.setDockLocation(Geo.point(site.dockLat(), site.dockLng()));
+            fc.setGeofenceRadiusM(site.geofenceM());
             saved.add(centres.save(fc));
         }
         return saved;
@@ -142,6 +167,10 @@ public class DataSeeder implements ApplicationRunner {
             vendor.setDocAccuracyPct(82 + ((i * 3) % 16));
             vendor.setAvgDetentionMin(20 + ((i * 11) % 60));
             vendor.setRejectionRatePct((i % 5) + 1);
+            vendor.setSlug(names.get(i).toLowerCase(java.util.Locale.ROOT)
+                    .replaceAll("[^a-z0-9]+", "-").replaceAll("(^-|-$)", ""));
+            vendor.setStatus("active");
+            vendor.setCreatedAt(Instant.now());
             saved.add(vendors.save(vendor));
         }
         return saved;
@@ -222,13 +251,32 @@ public class DataSeeder implements ApplicationRunner {
         vendorUser.setEmail("priya@anandauto.example");
         vendorUser.setPasswordHash(hash);
         vendorUser.setName("Priya Raghavan");
-        vendorUser.setRole(Role.VENDOR);
+        vendorUser.setRole(Role.VENDOR_ADMIN);
         vendorUser.setTitle("Head of Dispatch");
         vendorUser.setOrgId(vendorList.get(0).getId());
         vendorUser.setOrgName(vendorList.get(0).getName());
         vendorUser.setPhone("+91 98220 41180");
         vendorUser.setInitials("PR");
+        // The tenant FK, not just the loose orgId string. Every tenant-scoped
+        // query reads this, and an account without it can see nothing at all.
+        vendorUser.setTenant(vendorList.get(0));
         users.save(vendorUser);
+
+        // A second vendor account on a different tenant. Without one there is
+        // no way to demonstrate — or test — that isolation actually holds.
+        AppUser dispatcherUser = new AppUser();
+        dispatcherUser.setId("user-vendor-2");
+        dispatcherUser.setEmail("arjun@nimbustextiles.example");
+        dispatcherUser.setPasswordHash(hash);
+        dispatcherUser.setName("Arjun Mehta");
+        dispatcherUser.setRole(Role.DISPATCHER);
+        dispatcherUser.setTitle("Dispatch Coordinator");
+        dispatcherUser.setOrgId(vendorList.get(1).getId());
+        dispatcherUser.setOrgName(vendorList.get(1).getName());
+        dispatcherUser.setTenant(vendorList.get(1));
+        dispatcherUser.setPhone("+91 98204 77321");
+        dispatcherUser.setInitials("AM");
+        users.save(dispatcherUser);
 
         AppUser driverUser = new AppUser();
         driverUser.setId("user-driver-1");

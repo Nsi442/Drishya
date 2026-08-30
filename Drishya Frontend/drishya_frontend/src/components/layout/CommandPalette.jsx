@@ -35,7 +35,7 @@ export default function CommandPalette({ open, onClose }) {
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase()
-    const role = user?.role ?? 'vendor'
+    const role = user?.role ?? 'vendor_admin'
 
     const pages = [...navFor(role).filter((n) => n.to), ...(EXTRA_DESTINATIONS[role] ?? [])]
       .filter((p) => !q || p.label.toLowerCase().includes(q))

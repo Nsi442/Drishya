@@ -3,47 +3,89 @@
 // arrival board can never drift apart.
 
 export const ROLES = {
+  VENDOR_ADMIN: 'vendor_admin',
+  DISPATCHER: 'dispatcher',
+  DRIVER: 'driver',
+  FC: 'fc',
+}
+
+// Which portal a role lands in.
+//
+// Roles and portals are not the same thing and stopped being the same thing
+// when VENDOR split into VENDOR_ADMIN and DISPATCHER: both work inside the
+// vendor portal, they differ in what they may change once there. Routing keys
+// off the portal, so adding another vendor-side role later is one line here
+// rather than a new branch everywhere a route is guarded.
+export const PORTALS = {
   VENDOR: 'vendor',
   DRIVER: 'driver',
   FC: 'fc',
 }
 
+export const ROLE_PORTAL = {
+  vendor_admin: PORTALS.VENDOR,
+  dispatcher: PORTALS.VENDOR,
+  driver: PORTALS.DRIVER,
+  fc: PORTALS.FC,
+}
+
 export const ROLE_LABEL = {
-  vendor: 'Vendor',
+  vendor_admin: 'Vendor admin',
+  dispatcher: 'Dispatcher',
   driver: 'Driver',
   fc: 'Fulfilment Centre',
 }
 
 export const ROLE_HOME = {
-  vendor: '/vendor',
+  vendor_admin: '/vendor',
+  dispatcher: '/vendor',
   driver: '/driver',
   fc: '/fc',
 }
 
 // Shipment lifecycle, in order. `index` drives the timeline and progress bars.
+//
+// These keys are the wire contract with the backend: they match the @JsonValue
+// strings on domain/enums/ShipmentStatus.java exactly. A key that drifts here
+// renders a blank pill and matches no filter, and neither end reports an error.
 export const SHIPMENT_STATUS = {
-  booked: { label: 'Booked', tone: 'neutral', index: 0 },
-  picked_up: { label: 'Picked up', tone: 'info', index: 1 },
+  created: { label: 'Created', tone: 'neutral', index: 0 },
+  // Held at origin because paperwork failed validation. Amber rather than red:
+  // it is a blocker, but one the vendor can still clear before dispatch, which
+  // is the entire point of catching it here instead of at the gate.
+  docs_pending: { label: 'Documents pending', tone: 'warn', index: 1 },
   in_transit: { label: 'In transit', tone: 'accent', index: 2 },
   at_gate: { label: 'At gate', tone: 'violet', index: 3 },
-  unloading: { label: 'Unloading', tone: 'violet', index: 4 },
+  // Distinct from at_gate deliberately: the gap between the two is dock queue
+  // time, which is the half of the delay a route planner cannot see.
+  at_dock: { label: 'At dock', tone: 'violet', index: 4 },
   delivered: { label: 'Delivered', tone: 'success', index: 5 },
+  // Off the happy path but still live — refused at the gate, a breakdown.
+  exception: { label: 'Exception', tone: 'danger', index: -1 },
   cancelled: { label: 'Cancelled', tone: 'danger', index: -1 },
 }
 
-export const SHIPMENT_FLOW = ['booked', 'picked_up', 'in_transit', 'at_gate', 'unloading', 'delivered']
+export const SHIPMENT_FLOW = ['created', 'docs_pending', 'in_transit', 'at_gate', 'at_dock', 'delivered']
 
-export const ACTIVE_STATUSES = ['booked', 'picked_up', 'in_transit', 'at_gate', 'unloading']
-export const MOVING_STATUSES = ['picked_up', 'in_transit']
+export const ACTIVE_STATUSES = ['created', 'docs_pending', 'in_transit', 'at_gate', 'at_dock', 'exception']
 
-// Driver-facing wording for the same lifecycle — a driver taps "Loaded", not
-// "picked_up". Same underlying state, different vocabulary.
+// Only in_transit now. "Picked up" used to be a separate state; it became a
+// property of the trip (its startedAt) rather than of the shipment, because a
+// shipment can be attempted more than once and only one of those attempts is
+// the one currently moving.
+export const MOVING_STATUSES = ['in_transit']
+
+// Driver-facing wording for the same lifecycle — a driver taps "Arrived", not
+// "at_gate". Same underlying state, different vocabulary.
+//
+// docs_pending is deliberately absent. There is no driver action that clears a
+// failed document, and offering one would let a vehicle leave on paperwork that
+// will be rejected on arrival.
 export const DRIVER_ACTION = {
-  booked: { label: 'Start trip', next: 'picked_up', note: 'Heading to pickup' },
-  picked_up: { label: 'Mark loaded', next: 'in_transit', note: 'Loading at vendor warehouse' },
+  created: { label: 'Start trip', next: 'in_transit', note: 'Departed origin, tracking active' },
   in_transit: { label: 'Arrived at FC', next: 'at_gate', note: 'Reached fulfilment centre gate' },
-  at_gate: { label: 'Start unloading', next: 'unloading', note: 'Docked and unloading' },
-  unloading: { label: 'Complete delivery', next: 'delivered', note: 'Capture proof of delivery' },
+  at_gate: { label: 'Start unloading', next: 'at_dock', note: 'Docked, quantity check in progress' },
+  at_dock: { label: 'Complete delivery', next: 'delivered', note: 'Capture proof of delivery' },
 }
 
 export const DOC_TYPES = {
@@ -52,6 +94,7 @@ export const DOC_TYPES = {
   gst: 'GST declaration',
   lr: 'LR copy',
   asn: 'Advance shipping notice',
+  pod: 'Proof of delivery',
 }
 
 export const DOC_STATUS = {

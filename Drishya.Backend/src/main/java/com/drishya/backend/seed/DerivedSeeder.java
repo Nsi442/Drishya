@@ -232,7 +232,7 @@ public class DerivedSeeder {
     private void seedExceptions(List<Shipment> shipments, Instant now) {
         Rng rng = new Rng(EXCEPTION_SEED);
         List<Shipment> candidates = shipments.stream()
-                .filter(s -> s.getStatus() != ShipmentStatus.BOOKED
+                .filter(s -> s.getStatus() != ShipmentStatus.CREATED
                         && s.getStatus() != ShipmentStatus.CANCELLED)
                 .toList();
         if (candidates.isEmpty()) {

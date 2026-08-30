@@ -8,6 +8,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -51,6 +52,25 @@ public class ApiExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
         return ResponseEntity.badRequest()
                 .body(body(HttpStatus.BAD_REQUEST, "BAD_REQUEST", ex.getMessage()));
+    }
+
+    /**
+     * A body the parser could not read at all — a missing field mapped to a
+     * primitive, a malformed number, wrong JSON shape.
+     *
+     * <p>Without this it fell to the catch-all and became a 500, which says the
+     * server broke when in fact the request was wrong. That matters beyond
+     * tidiness: a 500 tells a caller to retry, and this will fail identically
+     * every time. It also masked a security test — a cross-tenant write attempt
+     * with a malformed body returned 500, which read as "not blocked" when the
+     * request had simply never reached the ownership check.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleUnreadable(HttpMessageNotReadableException ex) {
+        return ResponseEntity.badRequest()
+                .body(body(HttpStatus.BAD_REQUEST, "MALFORMED_BODY",
+                        "That request body could not be read. Check the field types and that "
+                                + "every required field is present."));
     }
 
     /**

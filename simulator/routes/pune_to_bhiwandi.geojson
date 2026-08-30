@@ -1,0 +1,73 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Pune to FC Bhiwandi",
+        "description": "NH-48 via the Khandala ghat and the Bhiwandi warehouse belt. Ends on the receiving bays, not the site centroid, so the geofence sees a real crossing."
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            73.8567,
+            18.5204
+          ],
+          [
+            73.79,
+            18.61
+          ],
+          [
+            73.675,
+            18.735
+          ],
+          [
+            73.52,
+            18.75
+          ],
+          [
+            73.4062,
+            18.7546
+          ],
+          [
+            73.343,
+            18.786
+          ],
+          [
+            73.26,
+            18.86
+          ],
+          [
+            73.18,
+            18.95
+          ],
+          [
+            73.112,
+            19.033
+          ],
+          [
+            73.095,
+            19.12
+          ],
+          [
+            73.08,
+            19.2
+          ],
+          [
+            73.07,
+            19.26
+          ],
+          [
+            73.0655,
+            19.29
+          ],
+          [
+            73.0648,
+            19.2958
+          ]
+        ]
+      }
+    }
+  ]
+}

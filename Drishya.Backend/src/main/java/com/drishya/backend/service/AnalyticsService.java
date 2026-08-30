@@ -223,7 +223,7 @@ public class AnalyticsService {
 
         List<Shipment> active = all.stream().filter(Shipment::isActive).toList();
         long occupied = all.stream()
-                .filter(s -> s.getStatus() == ShipmentStatus.UNLOADING && s.getDockId() != null)
+                .filter(s -> s.getStatus() == ShipmentStatus.AT_DOCK && s.getDockId() != null)
                 .map(Shipment::getDockId).distinct().count();
 
         List<Shipment> inboundToday = all.stream()
@@ -240,7 +240,7 @@ public class AnalyticsService {
                         .count(),
                 (int) active.stream().filter(s -> s.getDelayMin() > 15).count(),
                 (int) all.stream().filter(s -> s.getStatus() == ShipmentStatus.AT_GATE).count(),
-                (int) all.stream().filter(s -> s.getStatus() == ShipmentStatus.UNLOADING).count(),
+                (int) all.stream().filter(s -> s.getStatus() == ShipmentStatus.AT_DOCK).count(),
                 (int) occupied,
                 docks.findByFulfilmentCentreIdOrderByNameAsc(fcId).size(),
                 (int) exceptions.countByFcIdAndStatusNot(fcId, ExceptionStatus.RESOLVED),

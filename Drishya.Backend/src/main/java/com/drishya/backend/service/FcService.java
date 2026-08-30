@@ -12,6 +12,7 @@ import com.drishya.backend.domain.enums.ShipmentStatus;
 import com.drishya.backend.dto.AppointmentDto;
 import com.drishya.backend.dto.DockDto;
 import com.drishya.backend.dto.GateLogDto;
+import com.drishya.backend.domain.enums.Role;
 import com.drishya.backend.dto.ShipmentDto;
 import com.drishya.backend.dto.YardVehicleDto;
 import com.drishya.backend.dto.request.Requests;
@@ -56,23 +57,74 @@ public class FcService {
     }
 
     /**
+     * The site this caller is actually the receiving desk for.
+     *
+     * <p><b>The fcId in the URL is not trusted.</b> Every one of these endpoints
+     * took it straight from the path, so the desk at Bhiwandi could read
+     * Manesar's arrival board, yard, receiving queue and dock gantt by editing
+     * one path segment — and gate a Manesar vehicle out. FC is deliberately
+     * cross-tenant, since a desk must see every vendor booked into its site, and
+     * that made it easy to forget it is still bounded on the other axis: one
+     * site, not all of them.
+     *
+     * <p>Reports not-found rather than forbidden, so the endpoint does not
+     * confirm which other sites exist.
+     */
+    private String requireSite(CallerService.Caller caller, String requestedFcId) {
+        if (caller == null || caller.role() != Role.FC || caller.orgId() == null) {
+            throw ApiException.forbidden("This view belongs to a fulfilment centre account.");
+        }
+        if (requestedFcId != null && !requestedFcId.isBlank()
+                && !"all".equals(requestedFcId) && !caller.orgId().equals(requestedFcId)) {
+            throw ApiException.notFound("No such fulfilment centre.");
+        }
+        return caller.orgId();
+    }
+
+    /**
+     * A consignment inbound to this caller's own site.
+     *
+     * <p>Gate-in, gate-out and the goods receipt act on a shipment id taken from
+     * the path, with nothing tying it to the desk performing the action.
+     */
+    private Shipment requireInbound(String shipmentId, CallerService.Caller caller) {
+        String site = requireSite(caller, null);
+        return shipments.findById(shipmentId)
+                .filter(s -> s.getFulfilmentCentre() != null
+                        && site.equals(s.getFulfilmentCentre().getId()))
+                .orElseThrow(() -> ApiException.notFound("No such consignment at this site."));
+    }
+
+    /**
      * The arrival board. Sorted by live ETA by default, because that is the
      * order the receiving team actually works in.
      */
     @Transactional(readOnly = true)
-    public List<ShipmentDto> arrivals(String fcId, String window, String status, String search) {
+    public List<ShipmentDto> arrivals(CallerService.Caller caller, String fcId, String window,
+                                      String status, String search) {
+        fcId = requireSite(caller, fcId);
         Instant now = Instant.now();
         Instant endOfToday = LocalDate.now().atTime(23, 59, 59).atZone(ZoneId.systemDefault()).toInstant();
 
         return shipments.findByFulfilmentCentreId(fcId).stream()
                 .filter(s -> s.getStatus() != ShipmentStatus.CANCELLED)
-                .filter(s -> switch (window == null ? "today" : window) {
-                    case "today" -> !s.getPredictedAt().isAfter(endOfToday)
-                            && s.getStatus() != ShipmentStatus.DELIVERED;
-                    case "4h" -> s.getPredictedAt().isAfter(now.minus(1, ChronoUnit.HOURS))
-                            && s.getPredictedAt().isBefore(now.plus(4, ChronoUnit.HOURS));
-                    case "active" -> s.isActive();
-                    default -> true;
+                // predictedAt is nullable now and legitimately so: the ETA
+                // engine withdraws an estimate rather than serving one built on
+                // a stale position. A consignment with no current estimate is
+                // still inbound and still belongs on the board — it is the one
+                // the desk most needs to see — so it is kept in the time
+                // windows rather than filtered out by a null check.
+                .filter(s -> {
+                    Instant eta = s.getPredictedAt();
+                    return switch (window == null ? "today" : window) {
+                        case "today" -> (eta == null || !eta.isAfter(endOfToday))
+                                && s.getStatus() != ShipmentStatus.DELIVERED;
+                        case "4h" -> eta == null
+                                || (eta.isAfter(now.minus(1, ChronoUnit.HOURS))
+                                    && eta.isBefore(now.plus(4, ChronoUnit.HOURS)));
+                        case "active" -> s.isActive();
+                        default -> true;
+                    };
                 })
                 .filter(s -> status == null || "all".equals(status) || s.getStatus().wire().equals(status))
                 .filter(s -> search == null || search.isBlank() || matches(s, search))
@@ -84,7 +136,8 @@ public class FcService {
 
     /** Vehicles physically on site, and the gate log behind them. */
     @Transactional(readOnly = true)
-    public YardView yard(String fcId) {
+    public YardView yard(CallerService.Caller caller, String fcId) {
+        fcId = requireSite(caller, fcId);
         Instant now = Instant.now();
         Map<String, String> dockNames = docks.findByFulfilmentCentreIdOrderByNameAsc(fcId).stream()
                 .collect(Collectors.toMap(Dock::getId, Dock::getName, (a, b) -> a));
@@ -130,7 +183,8 @@ public class FcService {
     }
 
     @Transactional
-    public ShipmentDto gateIn(String shipmentId) {
+    public ShipmentDto gateIn(String shipmentId, CallerService.Caller caller) {
+        requireInbound(shipmentId, caller);
         Shipment s = load(shipmentId);
         if (s.getGateInAt() != null) {
             throw ApiException.badRequest("ALREADY_GATED_IN",
@@ -148,7 +202,8 @@ public class FcService {
     }
 
     @Transactional
-    public ShipmentDto gateOut(String shipmentId) {
+    public ShipmentDto gateOut(String shipmentId, CallerService.Caller caller) {
+        requireInbound(shipmentId, caller);
         Shipment s = load(shipmentId);
         if (s.getGateInAt() == null) {
             throw ApiException.badRequest("NOT_ON_SITE",
@@ -161,9 +216,10 @@ public class FcService {
 
     /** Consignments at a dock waiting for their goods receipt check. */
     @Transactional(readOnly = true)
-    public List<ShipmentDto> receivingQueue(String fcId) {
+    public List<ShipmentDto> receivingQueue(CallerService.Caller caller, String fcId) {
+        fcId = requireSite(caller, fcId);
         return shipments.findByFulfilmentCentreId(fcId).stream()
-                .filter(s -> s.getStatus() == ShipmentStatus.UNLOADING
+                .filter(s -> s.getStatus() == ShipmentStatus.AT_DOCK
                         || (s.getStatus() == ShipmentStatus.DELIVERED && s.getGrn() == null))
                 .sorted(Comparator.comparing(Shipment::getPredictedAt,
                         Comparator.nullsLast(Comparator.naturalOrder())))
@@ -177,7 +233,9 @@ public class FcService {
      * them, not because someone remembers to.
      */
     @Transactional
-    public ShipmentDto submitGrn(String shipmentId, Requests.SubmitGrn request) {
+    public ShipmentDto submitGrn(String shipmentId, Requests.SubmitGrn request,
+                                 CallerService.Caller caller) {
+        requireInbound(shipmentId, caller);
         Shipment s = load(shipmentId);
 
         if (request.receivedCartons() > s.getCartons()) {
@@ -231,7 +289,8 @@ public class FcService {
 
     /** The dock gantt for one day, with per-bay utilisation. */
     @Transactional(readOnly = true)
-    public DockSchedule dockSchedule(String fcId, Long dayStartMillis) {
+    public DockSchedule dockSchedule(CallerService.Caller caller, String fcId, Long dayStartMillis) {
+        fcId = requireSite(caller, fcId);
         Instant dayStart = dayStartMillis != null
                 ? Instant.ofEpochMilli(dayStartMillis)
                 : LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant();

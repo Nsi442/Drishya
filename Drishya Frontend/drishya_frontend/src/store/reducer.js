@@ -1,7 +1,7 @@
 // One reducer, four slices. Actions are namespaced by slice so a reader can
 // tell from the type alone which part of the tree a dispatch touches.
 
-import { ROLES } from '../lib/constants.js'
+import { ROLES, ROLE_PORTAL, PORTALS } from '../lib/constants.js'
 
 export const initialState = {
   auth: {
@@ -283,7 +283,7 @@ export function selectUnreadCount(state) {
 export function selectRoleScope(state) {
   const user = state.auth.user
   if (!user) return {}
-  if (user.role === ROLES.VENDOR) return { vendorId: user.orgId }
+  if (ROLE_PORTAL[user.role] === PORTALS.VENDOR) return { vendorId: user.orgId }
   if (user.role === ROLES.FC) return { fcId: user.orgId }
   if (user.role === ROLES.DRIVER) return { driverId: user.driverId }
   return {}

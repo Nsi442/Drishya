@@ -47,7 +47,7 @@ export default function InboundDetail() {
 
   const docks = useMemo(() => db.docks.filter((d) => d.fcId === fcId), [fcId])
   const occupied = useMemo(
-    () => new Set(state.shipments.ids.map((sid) => state.shipments.byId[sid]).filter((s) => s?.status === 'unloading' && s.dockId).map((s) => s.dockId)),
+    () => new Set(state.shipments.ids.map((sid) => state.shipments.byId[sid]).filter((s) => s?.status === 'at_dock' && s.dockId).map((s) => s.dockId)),
     [state.shipments],
   )
 
@@ -196,18 +196,18 @@ export default function InboundDetail() {
               variant={shipment.status === 'at_gate' ? 'primary' : 'secondary'}
               icon="package"
               disabled={shipment.status !== 'at_gate'}
-              loading={busy === 'unloading'}
+              loading={busy === 'at_dock'}
               onClick={() =>
-                run('unloading', () => advanceShipment(shipment.id, 'unloading', { label: 'Unloading at dock', detail: 'Docked, quantity check in progress' }), 'Unloading started')
+                run('at_dock', () => advanceShipment(shipment.id, 'at_dock', { label: 'Unloading at dock', detail: 'Docked, quantity check in progress' }), 'Unloading started')
               }
             >
               Mark unloading
             </Button>
 
             <Button
-              variant={shipment.status === 'unloading' ? 'primary' : 'secondary'}
+              variant={shipment.status === 'at_dock' ? 'primary' : 'secondary'}
               icon="clipboard"
-              disabled={shipment.status !== 'unloading'}
+              disabled={shipment.status !== 'at_dock'}
               to={`/fc/receiving?shipment=${shipment.id}`}
             >
               Raise goods receipt

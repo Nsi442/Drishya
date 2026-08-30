@@ -35,6 +35,17 @@ public class ApiException extends RuntimeException {
         return new ApiException(HttpStatus.UNAUTHORIZED, "BAD_CREDENTIALS", message);
     }
 
+    /**
+     * Authenticated, but not allowed — a driver reaching a vendor endpoint, or
+     * an account with no tenant asking a tenant-scoped question.
+     *
+     * <p>Not for "this belongs to another tenant": that answers as 404, because
+     * a 403 on a specific id already confirms the id exists.
+     */
+    public static ApiException forbidden(String message) {
+        return new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", message);
+    }
+
     public HttpStatus getStatus() {
         return status;
     }

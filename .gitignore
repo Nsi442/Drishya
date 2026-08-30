@@ -30,3 +30,22 @@ yarn-error.log*
 logs/
 *.pid
 *.h2.db
+
+# --- secrets ----------------------------------------------------------------
+# .env holds the local database password. .env.example is committed; .env never is.
+.env
+.env.local
+
+# --- trained models ---------------------------------------------------------
+# Build outputs, not source. The backend serves the heuristic when they are
+# absent, which is the correct default for a fresh clone.
+Drishya.Backend/models/*.onnx
+Drishya.Backend/models/features.json
+ml/data/
+
+# --- verification scratch -----------------------------------------------------
+# The UI checks write screenshots next to themselves when a run is being
+# debugged. Useful locally, noise in a diff.
+/*.png
+/*.mjs
+!Drishya.Backend/scripts/*.mjs

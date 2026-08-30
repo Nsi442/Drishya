@@ -62,7 +62,16 @@ public record ShipmentDto(
         Long slotEnd,
         Long updatedAt,
 
-        int delayMin,
+        /**
+         * Minutes past the promised time, or null when there is no current
+         * estimate to measure against.
+         *
+         * <p>Nullable deliberately. As a primitive it defaulted to 0 whenever
+         * the engine had withdrawn its estimate, and the browser rendered a
+         * confident "On time" for a consignment nobody could locate — the
+         * reassuring answer in the one case that warrants none.
+         */
+        Integer delayMin,
         String delayReason,
 
         String commodity,

@@ -13,6 +13,7 @@ import Table from '../../components/ui/Table.jsx'
 import Badge from '../../components/ui/Badge.jsx'
 import { PageHeader } from '../../components/ui/Misc.jsx'
 import { SkeletonCards } from '../../components/ui/Skeleton.jsx'
+import EtaAccuracy from '../../components/charts/EtaAccuracy.jsx'
 import { ChartFrame, TrendLine, TrendArea, DonutChart, DonutLegend, VolumeBars, MiniBar } from '../../components/charts/Charts.jsx'
 
 const daysAgo = (n) => {
@@ -111,6 +112,14 @@ export default function VendorAnalytics() {
             <StatCard label="Cost per shipment" value={formatCurrency(totals.avgCost)} icon="chart" hint={`${formatNumber(totals.totalCartons)} cartons moved`} />
           </>
         ) : null}
+      </div>
+
+      {/* How wrong the ETA engine has actually been. Placed above the
+          operational charts on purpose: a product whose central claim is
+          "we can tell you when the vehicle will arrive" should lead with how
+          often it was wrong, not bury it. Polls on its own timer. */}
+      <div className="mb-24">
+        <EtaAccuracy />
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr)', marginBottom: 16 }}>

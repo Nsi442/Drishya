@@ -134,7 +134,7 @@ export default function Signup() {
             variant="primary"
             size="lg"
             block
-            onClick={() => navigate(ROLE_HOME[form.orgType === 'fulfilment_centre' ? 'fc' : form.orgType === 'carrier' ? 'driver' : 'vendor'])}
+            onClick={() => navigate(ROLE_HOME[form.orgType === 'fulfilment_centre' ? 'fc' : form.orgType === 'carrier' ? 'driver' : 'vendor_admin'])}
             iconRight="arrowRight"
           >
             Open my workspace

@@ -2,6 +2,7 @@ package com.drishya.backend.service;
 
 import com.drishya.backend.domain.ShipmentDocument;
 import com.drishya.backend.domain.enums.DocumentStatus;
+import com.drishya.backend.service.CallerService;
 import com.drishya.backend.dto.DocumentDto;
 import com.drishya.backend.dto.request.Requests;
 import com.drishya.backend.repo.ShipmentDocumentRepository;
@@ -25,14 +26,28 @@ public class DocumentService {
     private final ShipmentDocumentRepository documents;
     private final Mapper mapper;
 
-    public DocumentService(ShipmentDocumentRepository documents, Mapper mapper) {
+    private final ShipmentService shipmentService;
+
+    public DocumentService(ShipmentDocumentRepository documents, Mapper mapper,
+                           ShipmentService shipmentService) {
+        this.shipmentService = shipmentService;
         this.documents = documents;
         this.mapper = mapper;
     }
 
+    /**
+     * Documents the caller may see.
+     *
+     * <p>A document has no owner of its own — it inherits the boundary of the
+     * shipment it hangs off, so the scope is expressed there and applied here.
+     * Unscoped, this returned all 360 documents in the cluster: every vendor's
+     * invoices, e-way bills and seal numbers, to anybody with a token.
+     */
     @Transactional(readOnly = true)
-    public List<DocumentDto> list(String status, String type, String search, String shipmentId) {
+    public List<DocumentDto> list(CallerService.Caller caller, String status, String type,
+                                  String search, String shipmentId) {
         return documents.findAllBy().stream()
+                .filter(d -> d.getShipment() != null && shipmentService.visibleTo(d.getShipment(), caller))
                 .filter(d -> shipmentId == null || d.getShipment().getId().equals(shipmentId))
                 .filter(d -> isAll(status) || d.getStatus().wire().equals(status))
                 .filter(d -> isAll(type) || d.getType().wire().equals(type))

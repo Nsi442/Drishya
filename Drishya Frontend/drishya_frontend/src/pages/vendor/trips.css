@@ -1,0 +1,12 @@
+/* --- live trips ----------------------------------------------------------- */
+
+/* The pessimistic edge of the confidence band, shown beside the midpoint.
+   Subdued because the midpoint is the answer and this is the caveat — but
+   present, because a dispatcher deciding whether to rebook needs the worst
+   case and a single time hides it. */
+.trip-band {
+  color: var(--text-subtle);
+  font-size: 11px;
+  line-height: var(--lh-small);
+  white-space: nowrap;
+}

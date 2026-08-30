@@ -1,0 +1,101 @@
+# The whole system, offline, in one command.
+#
+#   docker compose up --build
+#   → frontend  http://localhost:5173
+#     API       http://localhost:8080
+#     Swagger   http://localhost:8080/swagger-ui.html
+#
+# This is the fallback for a review where the venue network fails: nothing here
+# reaches outside the machine except the OpenStreetMap tiles the map draws on.
+#
+# For day-to-day development, run just the database and keep the hot reload:
+#
+#   docker compose up -d db
+#   cd Drishya.Backend && ./mvnw spring-boot:run
+#   cd "Drishya Frontend/drishya_frontend" && npm run dev
+
+services:
+  db:
+    # PostGIS 3.4 on PostgreSQL 16.
+    #
+    # The major version is pinned to 16 deliberately: Neon runs 16 in the hosted
+    # environment, and a spatial query that behaves on 17 locally and differently
+    # on 16 in production is the fault that surfaces the morning of a review.
+    image: postgis/postgis:16-3.4
+    container_name: drishya-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-drishya}
+      POSTGRES_USER: ${POSTGRES_USER:-drishya}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-drishya_local_only}
+    ports:
+      # 5433 on the host: a local PostgreSQL service already owns 5432 on this
+      # machine, and Docker publishing the same port does not error — it loses
+      # the race silently, and every connection reaches the wrong server.
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - drishya_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Flyway starting against a database that is listening but not yet ready
+      # fails the migration rather than waiting, so this gate matters.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-drishya} -d ${POSTGRES_DB:-drishya}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  api:
+    build:
+      context: ./Drishya.Backend
+      dockerfile: Dockerfile
+    container_name: drishya-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        # Not just "started". The API runs Flyway on boot, and a database that
+        # is up but still initialising fails the migration outright.
+        condition: service_healthy
+    environment:
+      # Container-to-container, so the service name and the internal port — not
+      # the 5433 the host sees.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-drishya}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-drishya}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-drishya_local_only}
+      PORT: 8080
+      # Fixed so restarting compose does not sign everyone out mid-demo. This is
+      # a local-only value and is not a secret; deployed environments set their
+      # own via JWT_SECRET.
+      JWT_SECRET: ${JWT_SECRET:-drishya-local-development-signing-key-not-a-secret}
+      ETA_CYCLE_MS: ${ETA_CYCLE_MS:-60000}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-local-training-export-token}
+    ports:
+      - "8080:8080"
+    healthcheck:
+      # Readiness, not liveness: liveness goes green as soon as the JVM is up,
+      # which is well before Flyway has migrated and the seeder has run.
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health/readiness || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
+
+  web:
+    build:
+      context: ./Drishya Frontend/drishya_frontend
+      dockerfile: Dockerfile
+      args:
+        # Relative, so the bundle calls /api, which nginx proxies to the api
+        # service — the browser stays on one origin and CORS never enters into
+        # the compose setup, exactly as the Vite dev proxy behaves.
+        VITE_API_BASE: "/api"
+    container_name: drishya-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      # 5173 to match the dev server, so the same URL works either way.
+      - "5173:80"
+
+volumes:
+  drishya_pgdata:

@@ -1,6 +1,6 @@
 import { Routes, Route } from 'react-router-dom'
 import RouteGuard, { RootRedirect } from './components/RouteGuard.jsx'
-import { ROLES } from './lib/constants.js'
+import { PORTALS } from './lib/constants.js'
 
 import VendorLayout from './components/layout/VendorLayout.jsx'
 import DriverLayout from './components/layout/DriverLayout.jsx'
@@ -17,6 +17,8 @@ import VendorShipments from './pages/vendor/VendorShipments.jsx'
 import ShipmentNew from './pages/vendor/ShipmentNew.jsx'
 import ShipmentDetail from './pages/vendor/ShipmentDetail.jsx'
 import LiveMap from './pages/vendor/LiveMap.jsx'
+import TripControl from './pages/vendor/TripControl.jsx'
+import ExceptionQueue from './pages/vendor/ExceptionQueue.jsx'
 import VendorDocuments from './pages/vendor/VendorDocuments.jsx'
 import VendorAppointments from './pages/vendor/VendorAppointments.jsx'
 import VendorCarriers from './pages/vendor/VendorCarriers.jsx'
@@ -61,7 +63,7 @@ export default function App() {
       <Route
         path="/vendor"
         element={
-          <RouteGuard role={ROLES.VENDOR}>
+          <RouteGuard portal={PORTALS.VENDOR}>
             <VendorLayout />
           </RouteGuard>
         }
@@ -71,6 +73,8 @@ export default function App() {
         <Route path="shipments/new" element={<ShipmentNew />} />
         <Route path="shipments/:id" element={<ShipmentDetail />} />
         <Route path="live-map" element={<LiveMap />} />
+        <Route path="trips" element={<TripControl />} />
+        <Route path="exceptions" element={<ExceptionQueue />} />
         <Route path="documents" element={<VendorDocuments />} />
         <Route path="appointments" element={<VendorAppointments />} />
         <Route path="carriers" element={<VendorCarriers />} />
@@ -84,7 +88,7 @@ export default function App() {
       <Route
         path="/driver"
         element={
-          <RouteGuard role={ROLES.DRIVER}>
+          <RouteGuard portal={PORTALS.DRIVER}>
             <DriverLayout />
           </RouteGuard>
         }
@@ -104,7 +108,7 @@ export default function App() {
       <Route
         path="/fc"
         element={
-          <RouteGuard role={ROLES.FC}>
+          <RouteGuard portal={PORTALS.FC}>
             <FCLayout />
           </RouteGuard>
         }

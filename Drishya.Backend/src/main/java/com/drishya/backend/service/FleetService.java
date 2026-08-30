@@ -123,6 +123,35 @@ public class FleetService {
 
     /** Vendor scorecards, recomputed from shipments and their paperwork. */
     @Transactional(readOnly = true)
+    /**
+     * The vendor directory, scoped to who is asking.
+     *
+     * <p><b>A VendorDto is not reference data.</b> It carries shipment volume,
+     * delivered count, on-time rate, document accuracy, average detention and
+     * rejection rate — a competitor's commercial performance, plus their
+     * contact number. Returning the full list to every vendor meant any tenant
+     * could read all eleven others' scorecards from one unauthenticated-looking
+     * directory call.
+     *
+     * <p>A fulfilment centre sees every vendor, because scoring the suppliers
+     * delivering into your site is the legitimate purpose of these numbers. A
+     * vendor sees only itself. A driver sees nothing.
+     */
+    public List<VendorDto> listVendorsFor(CallerService.Caller caller) {
+        if (caller == null || caller.role() == null) {
+            return List.of();
+        }
+        return switch (caller.role()) {
+            case FC -> listVendors();
+            case VENDOR_ADMIN, DISPATCHER -> caller.tenantId() == null ? List.of()
+                    : listVendors().stream()
+                            .filter(v -> caller.tenantId().equals(v.id()))
+                            .toList();
+            case DRIVER -> List.of();
+        };
+    }
+
+    /** Unscoped. System and FC use only — see listVendorsFor. */
     public List<VendorDto> listVendors() {
         List<Shipment> all = shipments.findAllBy();
 

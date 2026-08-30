@@ -12,6 +12,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import com.drishya.backend.config.AuthTokenFilter;
+import com.drishya.backend.service.CallerService;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -21,17 +24,23 @@ public class AppointmentController {
 
     private final AppointmentService appointmentService;
 
-    public AppointmentController(AppointmentService appointmentService) {
+    private final CallerService callers;
+
+    public AppointmentController(AppointmentService appointmentService,
+                              CallerService callers) {
+        this.callers = callers;
         this.appointmentService = appointmentService;
     }
 
     @GetMapping("/appointments")
-    public List<AppointmentDto> list(@RequestParam(required = false) String fcId,
+    public List<AppointmentDto> list(
+            @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId,
+            @RequestParam(required = false) String fcId,
                                      @RequestParam(required = false) String vendorId,
                                      @RequestParam(required = false) String status,
                                      @RequestParam(required = false) Long from,
                                      @RequestParam(required = false) Long to) {
-        return appointmentService.list(fcId, vendorId, status, from, to);
+        return appointmentService.list(callers.resolve(userId), fcId, vendorId, status, from, to);
     }
 
     @GetMapping("/docks")

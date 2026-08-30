@@ -41,14 +41,14 @@ export default function FCDashboard() {
     const mine = shipments.filter((s) => s.fcId === fcId && s.status !== 'cancelled')
     const todayEnd = new Date(now).setHours(23, 59, 59, 999)
     const active = mine.filter((s) => ACTIVE_STATUSES.includes(s.status))
-    const occupied = new Set(mine.filter((s) => s.status === 'unloading' && s.dockId).map((s) => s.dockId))
+    const occupied = new Set(mine.filter((s) => s.status === 'at_dock' && s.dockId).map((s) => s.dockId))
 
     return {
       inboundToday: mine.filter((s) => s.predictedAt <= todayEnd && s.status !== 'delivered').length,
       next4h: active.filter((s) => s.predictedAt > now && s.predictedAt <= now + 4 * HOUR).length,
       delayed: active.filter((s) => s.delayMin > 15).length,
       atGate: mine.filter((s) => s.status === 'at_gate').length,
-      unloading: mine.filter((s) => s.status === 'unloading').length,
+      unloading: mine.filter((s) => s.status === 'at_dock').length,
       occupied,
       cartons: active.reduce((sum, s) => sum + s.cartons, 0),
       arriving: active
@@ -113,7 +113,7 @@ export default function FCDashboard() {
         <CardBody>
           <div className="row gap-8 wrap">
             {docks.map((dock) => {
-              const occupant = shipments.find((s) => s.dockId === dock.id && s.status === 'unloading')
+              const occupant = shipments.find((s) => s.dockId === dock.id && s.status === 'at_dock')
               const waiting = shipments.find((s) => s.dockId === dock.id && s.status === 'at_gate')
               const stateLabel = occupant ? 'Unloading' : waiting ? 'Vehicle waiting' : 'Free'
               const tone = occupant ? 'accent' : waiting ? 'warn' : 'neutral'

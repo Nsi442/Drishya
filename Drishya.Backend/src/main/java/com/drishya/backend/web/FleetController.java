@@ -19,6 +19,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import com.drishya.backend.config.AuthTokenFilter;
+import com.drishya.backend.service.CallerService;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RestController;
 
 /** Carriers, vehicles, drivers, vendors and the driver-app endpoints. */
@@ -26,10 +29,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api")
 public class FleetController {
 
+    private final CallerService callers;
+
     private final FleetService fleetService;
     private final ShipmentService shipmentService;
 
-    public FleetController(FleetService fleetService, ShipmentService shipmentService) {
+    public FleetController(FleetService fleetService, ShipmentService shipmentService, CallerService callers) {
+        this.callers = callers;
         this.fleetService = fleetService;
         this.shipmentService = shipmentService;
     }
@@ -70,8 +76,9 @@ public class FleetController {
     }
 
     @GetMapping("/vendors")
-    public List<VendorDto> vendors() {
-        return fleetService.listVendors();
+    public List<VendorDto> vendors(
+            @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId) {
+        return fleetService.listVendorsFor(callers.resolve(userId));
     }
 
     @GetMapping("/fulfilment-centres")

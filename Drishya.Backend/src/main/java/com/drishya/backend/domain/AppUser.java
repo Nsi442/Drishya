@@ -5,6 +5,9 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Getter;
@@ -49,6 +52,20 @@ public class AppUser {
     private String orgId;
 
     private String orgName;
+
+    /**
+     * The tenant this account is bounded by, and the thing every repository
+     * method filters on.
+     *
+     * <p>Null for the two roles that are not tenant-scoped: a DRIVER sees only
+     * trips assigned to them personally, and an FC user sees inbound from every
+     * vendor booked into their site — cross-tenant by necessity, since that is
+     * what a receiving desk does. For VENDOR_ADMIN and DISPATCHER this is
+     * mandatory, and a null here must fail closed rather than open.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "tenant_id")
+    private Vendor tenant;
 
     private String phone;
 

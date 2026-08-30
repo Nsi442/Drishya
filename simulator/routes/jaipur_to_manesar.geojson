@@ -1,0 +1,57 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Jaipur to FC Manesar",
+        "description": "NH-48 north through Shahpura and Behror into the Manesar industrial belt."
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            75.7873,
+            26.9124
+          ],
+          [
+            75.85,
+            27.12
+          ],
+          [
+            75.96,
+            27.39
+          ],
+          [
+            76.1,
+            27.65
+          ],
+          [
+            76.28,
+            27.89
+          ],
+          [
+            76.45,
+            28.02
+          ],
+          [
+            76.79,
+            28.2
+          ],
+          [
+            76.88,
+            28.29
+          ],
+          [
+            76.92,
+            28.33
+          ],
+          [
+            76.9361,
+            28.3524
+          ]
+        ]
+      }
+    }
+  ]
+}

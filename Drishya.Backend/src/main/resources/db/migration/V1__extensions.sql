@@ -1,0 +1,11 @@
+-- PostGIS must exist before any table declares a geography column, so this runs
+-- ahead of the core schema.
+--
+-- On the local Docker image the postgis/postgis base image has already created
+-- it and this is a no-op. On RDS the extension is available but NOT enabled by
+-- default, and the application's database user is not permitted to create it —
+-- the master user has to, once, before the first deploy. See db/rds-setup.sql.
+--
+-- IF NOT EXISTS rather than a plain CREATE so the migration is identical in
+-- both places and Flyway records the same checksum either way.
+CREATE EXTENSION IF NOT EXISTS postgis;

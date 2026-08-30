@@ -4,6 +4,9 @@ import com.drishya.backend.dto.IncidentDto;
 import com.drishya.backend.dto.PageDto;
 import com.drishya.backend.dto.ShipmentDto;
 import com.drishya.backend.dto.request.Requests;
+import com.drishya.backend.config.AuthTokenFilter;
+import com.drishya.backend.service.CallerService;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import com.drishya.backend.service.ShipmentService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -23,13 +26,17 @@ public class ShipmentController {
 
     private final ShipmentService shipmentService;
 
-    public ShipmentController(ShipmentService shipmentService) {
+    private final CallerService callers;
+
+    public ShipmentController(ShipmentService shipmentService, CallerService callers) {
+        this.callers = callers;
         this.shipmentService = shipmentService;
     }
 
     /** Paged list for the tables. */
     @GetMapping
     public PageDto<ShipmentDto> list(
+            @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String fcId,
@@ -45,12 +52,13 @@ public class ShipmentController {
 
         var filter = new ShipmentService.ShipmentFilter(
                 search, status, fcId, vendorId, carrier, lane, delayedOnly, priority);
-        return shipmentService.list(filter, sort, direction, page, pageSize);
+        return shipmentService.list(callers.resolve(userId), filter, sort, direction, page, pageSize);
     }
 
     /** Unpaginated — the map, the control tower and the live tick all need the set. */
     @GetMapping("/all")
     public List<ShipmentDto> listAll(
+            @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String fcId,
@@ -59,12 +67,13 @@ public class ShipmentController {
 
         var filter = new ShipmentService.ShipmentFilter(
                 search, status, fcId, vendorId, null, null, delayedOnly, null);
-        return shipmentService.listAll(filter);
+        return shipmentService.listAll(callers.resolve(userId), filter);
     }
 
     @GetMapping("/{id}")
-    public ShipmentDto get(@PathVariable String id) {
-        return shipmentService.get(id);
+    public ShipmentDto get(@PathVariable String id,
+                           @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId) {
+        return shipmentService.get(id, callers.resolve(userId));
     }
 
     @PostMapping
@@ -74,29 +83,39 @@ public class ShipmentController {
 
     @PostMapping("/{id}/advance")
     public ShipmentDto advance(@PathVariable String id,
+            @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId,
+            
                                @Valid @RequestBody Requests.AdvanceShipment request) {
-        return shipmentService.advance(id, request);
+        return shipmentService.advance(id, request, callers.resolve(userId));
     }
 
     @PostMapping("/{id}/pod")
-    public ShipmentDto submitPod(@PathVariable String id, @Valid @RequestBody Requests.SubmitPod request) {
-        return shipmentService.submitPod(id, request);
+    public ShipmentDto submitPod(@PathVariable String id,
+            @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId,
+            @Valid @RequestBody Requests.SubmitPod request) {
+        return shipmentService.submitPod(id, request, callers.resolve(userId));
     }
 
     @PostMapping("/{id}/checklist")
     public ShipmentDto saveChecklist(@PathVariable String id,
+            @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId,
+            
                                      @RequestBody Requests.SaveChecklist request) {
-        return shipmentService.saveChecklist(id, request);
+        return shipmentService.saveChecklist(id, request, callers.resolve(userId));
     }
 
     @PatchMapping("/{id}/dock")
-    public ShipmentDto assignDock(@PathVariable String id, @Valid @RequestBody Requests.AssignDock request) {
-        return shipmentService.assignDock(id, request.dockId());
+    public ShipmentDto assignDock(@PathVariable String id,
+            @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId,
+            @Valid @RequestBody Requests.AssignDock request) {
+        return shipmentService.assignDock(id, request.dockId(), callers.resolve(userId));
     }
 
     @PostMapping("/{id}/cancel")
-    public ShipmentDto cancel(@PathVariable String id, @RequestBody Requests.CancelShipment request) {
-        return shipmentService.cancel(id, request.reason());
+    public ShipmentDto cancel(@PathVariable String id,
+            @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId,
+            @RequestBody Requests.CancelShipment request) {
+        return shipmentService.cancel(id, request.reason(), callers.resolve(userId));
     }
 
     /**
@@ -104,7 +123,9 @@ public class ShipmentController {
      * request per tick rather than one per moving vehicle.
      */
     @PostMapping("/live")
-    public Map<String, Integer> commitLive(@RequestBody List<Requests.LivePosition> updates) {
-        return Map.of("applied", shipmentService.commitLivePositions(updates));
+    public Map<String, Integer> commitLive(
+            @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId,
+            @RequestBody List<Requests.LivePosition> updates) {
+        return Map.of("applied", shipmentService.commitLivePositions(updates, callers.resolve(userId)));
     }
 }

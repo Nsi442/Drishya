@@ -169,6 +169,15 @@ public class Shipment {
     @OrderBy("at ASC")
     private List<ShipmentEvent> events = new ArrayList<>();
 
+    /**
+     * Attempts at this consignment, oldest first. Usually one; more than one
+     * means it came back from the gate and went out again. The current attempt
+     * is the last element.
+     */
+    @OneToMany(mappedBy = "shipment", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @OrderBy("startedAt ASC")
+    private List<Trip> trips = new ArrayList<>();
+
     @OneToMany(mappedBy = "shipment", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<ShipmentDocument> documents = new ArrayList<>();
 
@@ -199,13 +208,28 @@ public class Shipment {
         sensorReadings.add(reading);
     }
 
+    /** The attempt currently in play, or null if none has started. */
+    public Trip currentTrip() {
+        return trips.isEmpty() ? null : trips.get(trips.size() - 1);
+    }
+
+    public void addTrip(Trip trip) {
+        trip.setShipment(this);
+        trips.add(trip);
+    }
+
+    /** The tenant that owns this consignment. Vendor is mapped to tenants. */
+    public Vendor getTenant() {
+        return vendor;
+    }
+
     /** True while the consignment is somewhere between booked and delivered. */
     public boolean isActive() {
-        return status != ShipmentStatus.DELIVERED && status != ShipmentStatus.CANCELLED;
+        return status.isOpen();
     }
 
     /** True once the vehicle is on the road and not yet at the gate. */
     public boolean isMoving() {
-        return status == ShipmentStatus.PICKED_UP || status == ShipmentStatus.IN_TRANSIT;
+        return status.isMoving();
     }
 }

@@ -13,15 +13,29 @@ public final class ReferenceData {
     private ReferenceData() {
     }
 
-    public record Site(String id, String name, String city, double lat, double lng, int docks) {}
+    /**
+     * A fulfilment centre.
+     *
+     * <p>The dock coordinates are a few hundred metres off the site centroid,
+     * which is the real relationship on a large warehouse plot. The geofence is
+     * drawn around the bays rather than the address, and the radius is per site
+     * because a compact urban yard and a highway-side plot need different
+     * fences.
+     */
+    public record Site(String id, String name, String city, double lat, double lng, int docks,
+                       double dockLat, double dockLng, int geofenceM) {}
 
     public record City(String name, double lat, double lng) {}
 
     public static final List<Site> FULFILMENT_CENTRES = List.of(
-            new Site("fc-bhiwandi", "FC Bhiwandi", "Bhiwandi", 19.297, 73.0631, 8),
-            new Site("fc-manesar", "FC Manesar", "Manesar", 28.3536, 76.9349, 10),
-            new Site("fc-whitefield", "FC Whitefield", "Bengaluru", 12.9698, 77.75, 6),
-            new Site("fc-sanand", "FC Sanand", "Ahmedabad", 22.9917, 72.3833, 7));
+            new Site("fc-bhiwandi", "FC Bhiwandi", "Bhiwandi", 19.297, 73.0631, 8,
+                    19.2958, 73.0648, 250),
+            new Site("fc-manesar", "FC Manesar", "Manesar", 28.3536, 76.9349, 10,
+                    28.3524, 76.9361, 300),
+            new Site("fc-whitefield", "FC Whitefield", "Bengaluru", 12.9698, 77.75, 6,
+                    12.9689, 77.7513, 180),
+            new Site("fc-sanand", "FC Sanand", "Ahmedabad", 22.9917, 72.3833, 7,
+                    22.9906, 72.3845, 250));
 
     public static final List<City> VENDOR_CITIES = List.of(
             new City("Pune", 18.5204, 73.8567),

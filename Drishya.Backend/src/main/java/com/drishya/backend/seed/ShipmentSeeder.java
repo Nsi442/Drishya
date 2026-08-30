@@ -45,30 +45,30 @@ public class ShipmentSeeder {
     private static final Map<ShipmentStatus, Integer> STATUS_MIX = new EnumMap<>(Map.of(
             ShipmentStatus.DELIVERED, 22,
             ShipmentStatus.IN_TRANSIT, 14,
-            ShipmentStatus.BOOKED, 10,
-            ShipmentStatus.PICKED_UP, 5,
+            ShipmentStatus.CREATED, 10,
+            ShipmentStatus.DOCS_PENDING, 5,
             ShipmentStatus.AT_GATE, 4,
-            ShipmentStatus.UNLOADING, 3,
+            ShipmentStatus.AT_DOCK, 3,
             ShipmentStatus.CANCELLED, 2));
 
     private static final List<ShipmentStatus> FLOW = List.of(
-            ShipmentStatus.BOOKED, ShipmentStatus.PICKED_UP, ShipmentStatus.IN_TRANSIT,
-            ShipmentStatus.AT_GATE, ShipmentStatus.UNLOADING, ShipmentStatus.DELIVERED);
+            ShipmentStatus.CREATED, ShipmentStatus.DOCS_PENDING, ShipmentStatus.IN_TRANSIT,
+            ShipmentStatus.AT_GATE, ShipmentStatus.AT_DOCK, ShipmentStatus.DELIVERED);
 
     private static final Map<ShipmentStatus, String> EVENT_LABEL = Map.of(
-            ShipmentStatus.BOOKED, "Shipment booked",
-            ShipmentStatus.PICKED_UP, "Picked up from vendor warehouse",
+            ShipmentStatus.CREATED, "Shipment booked",
+            ShipmentStatus.DOCS_PENDING, "Picked up from vendor warehouse",
             ShipmentStatus.IN_TRANSIT, "In transit",
             ShipmentStatus.AT_GATE, "Arrived at fulfilment centre gate",
-            ShipmentStatus.UNLOADING, "Unloading at dock",
+            ShipmentStatus.AT_DOCK, "Unloading at dock",
             ShipmentStatus.DELIVERED, "Delivered and received");
 
     private static final Map<ShipmentStatus, String> EVENT_DETAIL = Map.of(
-            ShipmentStatus.BOOKED, "Consignment created and carrier assigned",
-            ShipmentStatus.PICKED_UP, "Seal applied, loading confirmed by driver",
+            ShipmentStatus.CREATED, "Consignment created and carrier assigned",
+            ShipmentStatus.DOCS_PENDING, "Seal applied, loading confirmed by driver",
             ShipmentStatus.IN_TRANSIT, "Vehicle departed origin, tracking active",
             ShipmentStatus.AT_GATE, "Gate-in recorded, awaiting dock assignment",
-            ShipmentStatus.UNLOADING, "Docked, quantity check in progress",
+            ShipmentStatus.AT_DOCK, "Docked, quantity check in progress",
             ShipmentStatus.DELIVERED, "Goods receipt note raised");
 
     private final ShipmentRepository shipments;
@@ -130,11 +130,11 @@ public class ShipmentSeeder {
         Instant predictedAt = promisedAt.plus(delayMin, ChronoUnit.MINUTES);
 
         Map<ShipmentStatus, Instant> timeline = new EnumMap<>(ShipmentStatus.class);
-        timeline.put(ShipmentStatus.BOOKED, bookedAt);
-        timeline.put(ShipmentStatus.PICKED_UP, pickupAt);
+        timeline.put(ShipmentStatus.CREATED, bookedAt);
+        timeline.put(ShipmentStatus.DOCS_PENDING, pickupAt);
         timeline.put(ShipmentStatus.IN_TRANSIT, pickupAt.plus(rng.nextInt(20, 70), ChronoUnit.MINUTES));
         timeline.put(ShipmentStatus.AT_GATE, predictedAt.minus(rng.nextInt(20, 60), ChronoUnit.MINUTES));
-        timeline.put(ShipmentStatus.UNLOADING, predictedAt.minus(rng.nextInt(5, 20), ChronoUnit.MINUTES));
+        timeline.put(ShipmentStatus.AT_DOCK, predictedAt.minus(rng.nextInt(5, 20), ChronoUnit.MINUTES));
         timeline.put(ShipmentStatus.DELIVERED, predictedAt);
 
         double progress = progressFor(status, rng);
@@ -179,7 +179,7 @@ public class ShipmentSeeder {
 
         // Gate times only exist once the vehicle actually reached the site.
         boolean atOrPastGate = status == ShipmentStatus.AT_GATE
-                || status == ShipmentStatus.UNLOADING
+                || status == ShipmentStatus.AT_DOCK
                 || status == ShipmentStatus.DELIVERED;
         s.setGateInAt(atOrPastGate ? timeline.get(ShipmentStatus.AT_GATE) : null);
         s.setGateOutAt(status == ShipmentStatus.DELIVERED
@@ -218,18 +218,23 @@ public class ShipmentSeeder {
 
     private double progressFor(ShipmentStatus status, Rng rng) {
         return switch (status) {
-            case BOOKED -> 0;
-            case PICKED_UP -> 0.02 + rng.next() * 0.06;
+            // Nothing has moved: the consignment is booked, or it is held at
+            // origin because its paperwork failed validation. Blocking dispatch
+            // is the point of DOCS_PENDING, so its progress is zero, not a
+            // nudge down the road.
+            case CREATED, DOCS_PENDING -> 0;
             case IN_TRANSIT -> 0.15 + rng.next() * 0.7;
             case AT_GATE -> 0.97;
-            case UNLOADING -> 0.99;
+            case AT_DOCK -> 0.99;
             case DELIVERED -> 1;
+            // Stopped wherever it went wrong, which can be anywhere.
+            case EXCEPTION -> 0.2 + rng.next() * 0.6;
             case CANCELLED -> rng.next() * 0.4;
         };
     }
 
     private void addEvents(Shipment s, ShipmentStatus status, Map<ShipmentStatus, Instant> timeline) {
-        ShipmentStatus reached = status == ShipmentStatus.CANCELLED ? ShipmentStatus.BOOKED : status;
+        ShipmentStatus reached = status == ShipmentStatus.CANCELLED ? ShipmentStatus.CREATED : status;
         int last = FLOW.indexOf(reached);
         for (int i = 0; i <= last; i++) {
             ShipmentStatus stage = FLOW.get(i);
@@ -256,6 +261,7 @@ public class ShipmentSeeder {
                 case GST -> "GSTR-" + rng.nextInt(10000, 99999);
                 case LR -> "LR-" + rng.nextInt(100000, 999999);
                 case ASN -> "ASN-" + rng.nextInt(10000, 99999);
+                case POD -> "POD-" + rng.nextInt(10000, 99999);
             };
 
             ShipmentDocument doc = new ShipmentDocument(

@@ -1,0 +1,75 @@
+# Render blueprint for the Drishya API.
+#
+#   Backend   Render   (this file)
+#   Frontend  Vercel   (Drishya Frontend/drishya_frontend/vercel.json)
+#   Database  Neon     (db/neon-setup.sql)
+#
+# Deploy: push this file, then in Render choose New > Blueprint and point it at
+# the repository. Everything except the secrets below is declared here, so the
+# environment is reproducible rather than a sequence of console clicks.
+#
+# WHY THREE PROVIDERS AND NOT ONE
+# Render has its own managed Postgres, but its free tier has no PostGIS and
+# expires after 30 days. Neon has PostGIS built in, does not expire, and its
+# scale-to-zero suits a system that is idle between demos. The split is
+# deliberate.
+
+services:
+  - type: web
+    name: drishya-api
+    runtime: docker
+    plan: free
+    region: singapore          # Closest to the Indian lanes this data describes.
+    rootDir: Drishya.Backend
+    dockerfilePath: ./Dockerfile
+
+    # Readiness, not liveness. Liveness goes green as soon as the JVM is up,
+    # which on this app is well before Flyway has finished migrating and the
+    # seeder has run — Render would start routing traffic into 500s.
+    healthCheckPath: /actuator/health/readiness
+
+    envVars:
+      # --- database ---------------------------------------------------------
+      # From Neon. Use the DIRECT connection string, not the pooled one:
+      # Neon's pooler runs PgBouncer in transaction mode, which breaks JDBC
+      # server-side prepared statements that Hibernate relies on. A long-lived
+      # JVM with a five-connection Hikari pool has no need for an external
+      # pooler anyway.
+      #
+      # Must end with ?sslmode=require — Neon refuses plaintext.
+      # Format: jdbc:postgresql://HOST/DB?sslmode=require
+      - key: SPRING_DATASOURCE_URL
+        sync: false
+      - key: SPRING_DATASOURCE_USERNAME
+        sync: false
+      - key: SPRING_DATASOURCE_PASSWORD
+        sync: false
+
+      # --- cross-origin -----------------------------------------------------
+      # The Vercel origin(s), comma separated. This is the first thing that
+      # breaks on a real deploy: the frontend is on vercel.app and the API is on
+      # onrender.com, so unlike local development there is no proxy hiding it.
+      # Include preview deployments if you want them to work.
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+
+      # --- prediction -------------------------------------------------------
+      # How often active trips are re-estimated. Every cycle wakes Neon, so on a
+      # free tier this is the setting that decides whether compute-hours are
+      # spent overnight on nothing. 60000 while demonstrating; raise it, or
+      # suspend the service, when idle.
+      - key: ETA_CYCLE_MS
+        value: "60000"
+
+      # Guards the cross-tenant training export. Generated rather than typed;
+      # unset would 404 the endpoint, which is the safe default but makes the
+      # ml pipeline unusable.
+      - key: INTERNAL_SERVICE_TOKEN
+        generateValue: true
+
+      - key: DB_POOL_SIZE
+        value: "5"
+
+      # Boot picks this up automatically. Keeps startup logs readable.
+      - key: SPRING_PROFILES_ACTIVE
+        value: "render"

@@ -1,0 +1,8 @@
+# Training pipeline only. Nothing here is needed to run Drishya — the backend
+# serves a plain ONNX file and has no Python dependency at all.
+pandas>=2.0
+numpy>=1.24
+lightgbm>=4.0
+onnxmltools>=1.12
+onnx>=1.15
+skl2onnx>=1.16

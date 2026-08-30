@@ -1,0 +1,7 @@
+# Keeps this directory in the repository so the Docker build can COPY it even
+# when no model has been trained.
+#
+# Trained artefacts (eta*.onnx, features.json) are git-ignored: they are build
+# outputs, they are binary, and a model committed here would be served in
+# production by whoever deployed next without anyone deciding to. Train one with
+# ml/train.py and mount or bake it in deliberately.

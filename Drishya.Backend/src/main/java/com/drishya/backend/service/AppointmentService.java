@@ -4,6 +4,7 @@ import com.drishya.backend.domain.Appointment;
 import com.drishya.backend.domain.Dock;
 import com.drishya.backend.domain.enums.AppointmentStatus;
 import com.drishya.backend.dto.AppointmentDto;
+import com.drishya.backend.service.CallerService;
 import com.drishya.backend.dto.DockDto;
 import com.drishya.backend.dto.request.Requests;
 import com.drishya.backend.repo.AppointmentRepository;
@@ -44,11 +45,38 @@ public class AppointmentService {
         this.mapper = mapper;
     }
 
+    /**
+     * Dock appointments the caller may see.
+     *
+     * <p>The vendorId parameter below is a filter the browser asks for, not a
+     * boundary — which is why the scope is applied separately and first.
+     * Unscoped, this returned all 69 appointments across every vendor, so one
+     * vendor could read another's booked slots, vehicle registrations and
+     * carton counts, and infer their volumes.
+     */
+    /** Whether an appointment falls inside this caller's boundary. */
+    private boolean visibleTo(Appointment a, CallerService.Caller caller) {
+        if (caller == null || caller.role() == null) {
+            return false;
+        }
+        return switch (caller.role()) {
+            case VENDOR_ADMIN, DISPATCHER ->
+                    caller.tenantId() != null && caller.tenantId().equals(a.getVendorId());
+            // The receiving desk owns the gantt for its own site and must see
+            // every vendor booked into it.
+            case FC -> caller.orgId() != null && caller.orgId().equals(a.getFcId());
+            case DRIVER -> false;
+        };
+    }
+
     @Transactional(readOnly = true)
-    public List<AppointmentDto> list(String fcId, String vendorId, String status, Long from, Long to) {
+    public List<AppointmentDto> list(CallerService.Caller caller, String fcId, String vendorId,
+                                     String status, Long from, Long to) {
         List<Appointment> rows = fcId != null && !fcId.isBlank() && !"all".equals(fcId)
                 ? appointments.findByFcIdOrderByStartAsc(fcId)
                 : appointments.findAll();
+
+        rows = rows.stream().filter(a -> visibleTo(a, caller)).toList();
 
         Map<String, String> dockNames = dockNames();
 

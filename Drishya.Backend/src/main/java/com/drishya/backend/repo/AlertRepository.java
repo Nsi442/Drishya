@@ -12,7 +12,39 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface AlertRepository extends JpaRepository<Alert, String> {
 
+    /**
+     * Every alert, unscoped. <b>System use only.</b>
+     *
+     * <p>Kept for the seeder and for jobs that legitimately run across the
+     * cluster. It must not be reached from a request path — see the scoped
+     * methods below, and AlertService.listFor, which chooses between them.
+     */
     List<Alert> findAllByOrderByAtDesc();
+
+    /**
+     * One tenant's alerts.
+     *
+     * <p>This is the method a vendor request must use. The unscoped one above
+     * was being called from the listing endpoint, which handed every vendor the
+     * whole cluster's alert feed — 59 rows spanning 12 vendors, to anyone
+     * holding any valid token.
+     */
+    List<Alert> findByVendorIdOrderByAtDesc(String vendorId);
+
+    /**
+     * Alerts for shipments a given driver is carrying.
+     *
+     * <p>A driver has no tenant and no business seeing a vendor's commercial
+     * alerts. What they legitimately need is anything concerning the
+     * consignment currently on their vehicle, so the scope is the shipment
+     * rather than the organisation.
+     */
+    @Query("""
+            select a from Alert a
+            where a.shipmentId in (select s.id from Shipment s where s.driver.id = :driverId)
+            order by a.at desc
+            """)
+    List<Alert> findForDriver(@Param("driverId") String driverId);
 
     List<Alert> findByFcIdOrderByAtDesc(String fcId);
 

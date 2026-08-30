@@ -1,0 +1,51 @@
+/* --- exception queue ------------------------------------------------------ */
+
+.exc-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+}
+
+/* The icon distinguishes a delay from a document rejection; colour only ranks
+   them. Neither carries the meaning alone — the row spells it out in words. */
+.exc-dot.critical {
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
+  color: var(--danger-text);
+}
+
+.exc-dot.warning {
+  background: var(--warn-soft);
+  border-color: var(--warn-border);
+  color: var(--warn-text);
+}
+
+.exc-dot.info {
+  background: var(--surface-sunken);
+  border-color: var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.exc-cell {
+  display: grid;
+  gap: 2px;
+}
+
+.exc-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-strong);
+  line-height: var(--lh-ui);
+}
+
+/* Explains why the row is actionable now rather than later. Reads as a
+   sentence, so it gets sentence leading. */
+.exc-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: var(--lh-small);
+}

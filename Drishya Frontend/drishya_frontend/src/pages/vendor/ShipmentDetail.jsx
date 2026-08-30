@@ -20,6 +20,8 @@ import { PageHeader, DataPoint, Callout, LiveIndicator } from '../../components/
 import Skeleton from '../../components/ui/Skeleton.jsx'
 import ShipmentMap from '../../components/map/ShipmentMap.jsx'
 import Timeline from '../../components/shipment/Timeline.jsx'
+import AsnPanel from '../../components/shipment/AsnPanel.jsx'
+import { trips as tripService } from '../../services/index.js'
 import SensorPanel from '../../components/shipment/SensorPanel.jsx'
 import {
   ETAPanel,
@@ -46,6 +48,7 @@ export default function ShipmentDetail() {
   const [reuploadNumber, setReuploadNumber] = useState('')
   const [uploading, setUploading] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const [cancelling, setCancelling] = useState(false)
 
   useDocumentTitle(shipment ? `${shipment.id} — ${shipment.lane}` : 'Shipment')
@@ -119,9 +122,35 @@ export default function ShipmentDetail() {
     }
   }
 
+  /**
+   * Downloads the chargeback dispute artefact.
+   *
+   * Fetched through the service layer and saved from memory rather than linked
+   * to directly: the bearer token is held in memory only, so an <a href> to a
+   * protected endpoint could not carry it.
+   */
+  async function downloadEvidence() {
+    setDownloading(true)
+    try {
+      await tripService.downloadEvidencePack(shipment.id)
+      toast.success('Evidence pack downloaded', {
+        description: 'Every timestamped event, document and position fix for this consignment.',
+      })
+    } catch (e) {
+      toast.error('Could not build the evidence pack', { description: e.message })
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   const tabs = [
     { value: 'journey', label: 'Journey', icon: 'navigation' },
     { value: 'documents', label: 'Documents', icon: 'file', count: docIssues.length || undefined },
+    // Pre-dispatch paperwork. Only offered while it can still change anything —
+    // once the vehicle has left, validating the notice is archaeology.
+    ...(shipment.status === 'created' || shipment.status === 'docs_pending'
+      ? [{ value: 'asn', label: 'Shipping notice', icon: 'shield' }]
+      : []),
     { value: 'sensors', label: 'Condition', icon: 'activity' },
     { value: 'pod', label: 'Proof of delivery', icon: 'checkCircle' },
   ]
@@ -147,7 +176,7 @@ export default function ShipmentDetail() {
             <Button variant="secondary" icon="calendar" to="/vendor/appointments">
               Dock slot
             </Button>
-            {shipment.status === 'booked' ? (
+            {shipment.status === 'created' ? (
               <Button variant="danger-soft" icon="x" onClick={() => setConfirmCancel(true)}>
                 Cancel
               </Button>
@@ -204,6 +233,28 @@ export default function ShipmentDetail() {
               <div className="pad">
                 <TabPanel value="journey" active={tab}>
                   <Timeline shipment={shipment} />
+
+                  {/* The dispute artefact. Offered from the journey tab because
+                      that is where someone reconstructing what happened is
+                      already looking. */}
+                  <div className="evidence-cta">
+                    <div>
+                      <p className="evidence-cta-title">Evidence pack</p>
+                      <p className="evidence-cta-body">
+                        Every timestamped event, document status and position fix for
+                        this consignment, with simulated and device-reported fixes
+                        counted separately. This is what a chargeback is contested with.
+                      </p>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      icon="download"
+                      loading={downloading}
+                      onClick={downloadEvidence}
+                    >
+                      Download
+                    </Button>
+                  </div>
                 </TabPanel>
 
                 <TabPanel value="documents" active={tab}>
@@ -213,6 +264,38 @@ export default function ShipmentDetail() {
                     onReupload={(doc) => {
                       setReuploadDoc(doc)
                       setReuploadNumber(doc.number ?? '')
+                    }}
+                  />
+                </TabPanel>
+
+                <TabPanel value="asn" active={tab}>
+                  <AsnPanel
+                    shipment={shipment}
+                    onValidated={(result) => {
+                      // The submission moves the shipment between CREATED and
+                      // DOCS_PENDING, so the status pill and the dispatch button
+                      // have to be told. Upsert the whole record, which is how
+                      // every other write on this page updates the store.
+                      dispatch({
+                        type: ACTIONS.SHIPMENTS_UPSERT,
+                        payload: {
+                          ...shipment,
+                          status: result.dispatchAllowed ? 'created' : 'docs_pending',
+                        },
+                      })
+
+                      if (result.dispatchAllowed) {
+                        toast.success('Notice accepted', {
+                          description: 'This consignment is cleared for dispatch.',
+                        })
+                      } else {
+                        const blocking = result.failures.filter((f) => f.severity === 'BLOCKING')
+                        toast.warn('Notice rejected', {
+                          description: `${blocking.length} ${
+                            blocking.length === 1 ? 'issue' : 'issues'
+                          } to resolve before this consignment can leave.`,
+                        })
+                      }
                     }}
                   />
                 </TabPanel>

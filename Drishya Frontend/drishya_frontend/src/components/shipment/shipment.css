@@ -299,3 +299,150 @@
 .ml-6 {
   margin-left: 6px;
 }
+
+/* --- advance shipping notice --------------------------------------------- */
+
+.asn-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-4);
+}
+
+.asn-actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.asn-error {
+  margin-top: var(--space-4);
+  color: var(--danger-text);
+  font-size: 13px;
+  line-height: var(--lh-base);
+}
+
+.asn-result {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* The verdict is a sentence, not a badge: it carries the count and the
+   consequence, which no pill can do. */
+.asn-verdict {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: var(--lh-base);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+}
+
+.asn-verdict.ok {
+  background: var(--success-soft);
+  border-color: var(--success-border);
+  color: var(--success-text);
+}
+
+.asn-verdict.blocked {
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
+  color: var(--danger-text);
+}
+
+.asn-subhead {
+  margin-top: var(--space-5);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  line-height: var(--lh-small);
+}
+
+.asn-failures {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.asn-failures li {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  border-left: 3px solid var(--border-strong);
+}
+
+.asn-failures.blocked li {
+  border-left-color: var(--danger);
+}
+
+.asn-failures.advisory li {
+  border-left-color: var(--warn);
+}
+
+.asn-field {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  line-height: var(--lh-small);
+}
+
+.asn-message {
+  font-size: 13px;
+  color: var(--text);
+  line-height: var(--lh-base);
+}
+
+.asn-compare {
+  font-size: 12px;
+  color: var(--text-subtle);
+  line-height: var(--lh-small);
+}
+
+.asn-compare code {
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-xs);
+  background: var(--surface-raised);
+  color: var(--text-strong);
+  font-size: 11px;
+}
+
+/* --- evidence pack -------------------------------------------------------- */
+
+.evidence-cta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-5);
+  margin-top: var(--space-6);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  flex-wrap: wrap;
+}
+
+.evidence-cta-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+  line-height: var(--lh-ui);
+}
+
+.evidence-cta-body {
+  margin-top: var(--space-1);
+  max-width: 62ch;
+  font-size: 12px;
+  color: var(--text-muted);
+  /* Read as a sentence, so sentence leading rather than UI leading. */
+  line-height: var(--lh-base);
+}

@@ -44,7 +44,7 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
 
     /** Drives the live tick: only what is actually on the road. */
     @EntityGraph(attributePaths = {"vendor", "fulfilmentCentre", "vehicle", "driver"})
-    @Query("select s from Shipment s where s.status in (com.drishya.backend.domain.enums.ShipmentStatus.PICKED_UP, "
+    @Query("select s from Shipment s where s.status in (com.drishya.backend.domain.enums.ShipmentStatus.DOCS_PENDING, "
             + "com.drishya.backend.domain.enums.ShipmentStatus.IN_TRANSIT)")
     List<Shipment> findMoving();
 
@@ -59,6 +59,41 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
 
     @Query("select count(s) from Shipment s where s.fulfilmentCentre.id = :fcId and s.predictedAt between :from and :to")
     long countArrivingBetween(@Param("fcId") String fcId, @Param("from") Instant from, @Param("to") Instant to);
+
+    /**
+     * Consignments still advertising an arrival time with no live trip behind
+     * it.
+     *
+     * <p>The prediction is denormalised onto the shipment so a list view can
+     * render without joining, which means it can outlive the trip that produced
+     * it. That is exactly what happened: a trip was correctly abandoned and its
+     * shipment went on showing a confident ETA and "108 hours late" for days,
+     * because nothing owned clearing the copy.
+     *
+     * <p>The test is a recent <i>position</i>, not merely an active trip. An
+     * earlier version asked only whether a trip was still ACTIVE, and missed
+     * the case that actually persisted: a trip dispatched but never tracked,
+     * holding a stale estimate alive indefinitely.
+     *
+     * <p><b>It must also have had a trip at all.</b> Without that clause this
+     * matched every consignment that has been booked but not yet dispatched —
+     * whose predictedAt is booking-time metadata, not a live claim — and swept
+     * twelve perfectly healthy in-transit shipments into EXCEPTION. An estimate
+     * can only go stale if something was once tracking it.
+     */
+    @Query("""
+            select s from Shipment s
+            where s.predictedAt is not null
+              and exists (
+                  select 1 from Trip t where t.shipment = s)
+              and not exists (
+                  select 1 from Trip t
+                  join Position p on p.trip = t
+                  where t.shipment = s
+                    and t.status = com.drishya.backend.domain.enums.TripStatus.ACTIVE
+                    and p.deviceTimestamp > :freshEnough)
+            """)
+    List<Shipment> findWithOrphanedPrediction(@Param("freshEnough") Instant freshEnough);
 
     boolean existsByInvoiceNo(String invoiceNo);
 }

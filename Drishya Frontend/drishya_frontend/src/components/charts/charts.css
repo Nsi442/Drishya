@@ -227,3 +227,71 @@
   min-width: 34px;
   text-align: right;
 }
+
+/* --- prediction accuracy ------------------------------------------------- */
+/* Spacing and leading come off the ladder in tokens.css, never a guessed pixel. */
+
+.chart-headline {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.chart-headline-value {
+  font-size: 30px;
+  font-weight: 600;
+  line-height: var(--lh-tight);
+  /* Negative tracking helps at this size; it would hurt the label below. */
+  letter-spacing: -0.02em;
+  color: var(--text-strong);
+}
+
+.chart-headline-unit {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: normal;
+}
+
+.chart-headline-label {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: var(--lh-base);
+}
+
+/* Read as a sentence, so it gets sentence leading rather than UI leading. */
+.chart-footnote {
+  margin-top: var(--space-4);
+  font-size: 12px;
+  color: var(--text-subtle);
+  line-height: var(--lh-small);
+}
+
+.chart-empty {
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: var(--lh-base);
+}
+
+/* A synthetic-data model must be impossible to mistake for a measured one. */
+.chart-warning {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--warn-border);
+  border-radius: var(--radius-md);
+  background: var(--warn-soft);
+  color: var(--warn-text);
+  font-size: 12px;
+  line-height: var(--lh-small);
+}
+
+.chart-error {
+  padding: var(--space-4);
+  color: var(--danger-text);
+  font-size: 13px;
+  line-height: var(--lh-base);
+}
