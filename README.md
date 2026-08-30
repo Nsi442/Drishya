@@ -225,8 +225,18 @@ counts them separately rather than blending them into one number.
 stored percentage that can drift from the shipments it summarises is worse than
 not having one.
 
-**Tenant isolation lives in the repository layer** — the boundary is part of the
-method signature, so forgetting it does not compile.
+**Isolation is enforced in the service layer, on reads and writes alike.**
+Vendor by tenant, fulfilment centre by site, driver by the shipments on their
+vehicle — and anything unrecognised gets nothing rather than everything. A
+`vendorId` or `fcId` in a query string is something the browser *asks for*, never
+the boundary; the scope is applied first, from the token, and the caller's own
+filters only narrow a set that was already theirs.
+
+**Predictions have a shelf life.** No estimate is served from a position fix
+older than two hours, and a trip silent for a day is closed as ABANDONED. A
+system with no way to say "I have lost this vehicle" will express ignorance in
+the language of precision — this one reported a consignment 85 hours late, from
+arithmetic that was correct at every step.
 
 **The ETA model predicts the residual of the heuristic**, not the arrival time.
 It has far less to learn, and when it has learned nothing useful it predicts a
@@ -236,21 +246,38 @@ correction near zero and degrades to the heuristic rather than to noise.
 
 ## Testing
 
+Four layers, because on this project each one repeatedly passed while the layer
+above it was broken.
+
 ```bash
-# 60 assertions end to end, both servers up. Safe to re-run.
+# 79 assertions end to end, both servers up. Safe to re-run.
 bash Drishya.Backend/scripts/api-smoke-test.sh
 
-# Real PostGIS via Testcontainers — H2 cannot answer ST_DWithin
-cd Drishya.Backend && ./mvnw test
+# every write path, attempted as the wrong tenant. Every line must say "blocked".
+python Drishya.Backend/scripts/tenant-write-audit.py
 
-cd "Drishya Frontend/drishya_frontend" && npm run lint && npm run build
+# all 39 pages, in a real browser, as every role
+node Drishya.Backend/scripts/ui-smoke.mjs
+
+# 26 interaction journeys: paperwork rejected then corrected, dispatch blocked
+# then allowed, evidence pack downloaded, proof of delivery signed
+node Drishya.Backend/scripts/ui-journeys.mjs
+
+# real PostGIS via Testcontainers — H2 cannot answer ST_DWithin
+cd Drishya.Backend && ./mvnw test
 ```
 
-The spatial tests run against a real PostGIS container because a spatial query
-that compiles proves nothing: Hibernate 7 can emit different SQL than 6 for the
-same mapping, and both are runtime properties.
+**Why four.** `curl` proved the API healthy on a day the browser could not sign
+in at all. A single-tenant API test proved isolation while seven endpoints
+leaked across tenants. A page-render check reported 39/39 clean while every page
+had rendered the login screen. Each layer only sees faults at its own layer, so
+the suites assert against their own known failure modes: `ui-smoke` fails if a
+whole portal renders identical content, or if a map collapses to zero height;
+`api-smoke-test` signs in as two vendors and asserts their data does not
+intersect.
 
----
+**A 4xx is not proof of anything.** A malformed body is rejected before
+authorisation runs. Every probe in these scripts uses a well-formed one.
 
 ## The machine-learning pipeline
 
