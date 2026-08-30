@@ -61,12 +61,15 @@ public class DataSeeder {
     private final ShipmentSeeder shipmentSeeder;
     private final LaneSeeder laneSeeder;
     private final TripSeeder tripSeeder;
+    private final org.springframework.transaction.support.TransactionTemplate transactions;
 
     public DataSeeder(VendorRepository vendors, FulfilmentCentreRepository centres, DockRepository docks,
                       CarrierRepository carriers, VehicleRepository vehicles, DriverRepository drivers,
                       AppUserRepository users, PasswordEncoder passwordEncoder, ShipmentSeeder shipmentSeeder,
                       LaneSeeder laneSeeder,
-                      TripSeeder tripSeeder) {
+                      TripSeeder tripSeeder,
+                      org.springframework.transaction.PlatformTransactionManager txManager) {
+        this.transactions = new org.springframework.transaction.support.TransactionTemplate(txManager);
         this.vendors = vendors;
         this.centres = centres;
         this.docks = docks;
@@ -102,7 +105,6 @@ public class DataSeeder {
      */
     @Async
     @EventListener(ApplicationReadyEvent.class)
-    @Transactional
     public void seedOnStartup() {
         if (vendors.count() > 0) {
             log.info("Database already populated — skipping seed");
@@ -110,27 +112,69 @@ public class DataSeeder {
         }
 
         log.info("Seeding reference data");
-        List<FulfilmentCentre> sites = seedCentres();
-        seedDocks(sites);
-        List<Vendor> vendorList = seedVendors();
-        List<Carrier> carrierList = seedCarriers();
-        List<Vehicle> vehicleList = seedVehicles(carrierList);
-        List<Driver> driverList = seedDrivers(vehicleList);
-        seedUsers(vendorList, driverList, sites);
 
-        shipmentSeeder.seed(vendorList, sites, vehicleList, driverList);
+        // Each phase commits on its own, rather than the whole seed running as
+        // one transaction.
+        //
+        // <p>It used to be a single @Transactional method covering all eleven
+        // phases and roughly 2,400 inserts. On localhost that is a second and
+        // nobody notices. Against a managed database a region away it holds one
+        // transaction open for minutes, which Postgres is entitled to kill —
+        // Neon does — and because the rollback is atomic the result is not a
+        // partial seed but an empty database, with the exception swallowed by
+        // @Async into a log line nobody reads. Every table read zero.
+        //
+        // Committing per phase means a phase that fails costs that phase, the
+        // work before it survives, and the counts below say how far it got.
+        List<FulfilmentCentre> sites = inTransaction("sites", this::seedCentres);
+        inTransaction("docks", () -> { seedDocks(sites); return null; });
+        List<Vendor> vendorList = inTransaction("vendors", this::seedVendors);
+        List<Carrier> carrierList = inTransaction("carriers", this::seedCarriers);
+        List<Vehicle> vehicleList = inTransaction("vehicles", () -> seedVehicles(carrierList));
+        List<Driver> driverList = inTransaction("drivers", () -> seedDrivers(vehicleList));
 
-        // Lanes and the shared history last: they hang off the sites, and
-        // the ETA engine has nothing to divide by without them.
-        laneSeeder.seed();
+        // Users before shipments: a seed that dies half way should still leave
+        // an application somebody can sign in to and look at.
+        inTransaction("users", () -> { seedUsers(vendorList, driverList, sites); return null; });
+
+        inTransaction("shipments", () -> {
+            shipmentSeeder.seed(vendorList, sites, vehicleList, driverList);
+            return null;
+        });
+
+        // Lanes and the shared history: the ETA engine has nothing to divide by
+        // without them.
+        inTransaction("lanes", () -> { laneSeeder.seed(); return null; });
 
         // Vehicles on the road, last reporting a minute ago. Without these the
-        // live map — the page the product is about — opens empty on a fresh
-        // database and needs the simulator run before it shows anything.
-        tripSeeder.seed();
+        // live map — the page the product is about — opens empty.
+        inTransaction("trips", () -> { tripSeeder.seed(); return null; });
 
         log.info("Seed complete: {} vendors, {} vehicles, {} drivers, {} sites",
-                vendorList.size(), vehicleList.size(), driverList.size(), sites.size());
+                vendorList == null ? 0 : vendorList.size(),
+                vehicleList == null ? 0 : vehicleList.size(),
+                driverList == null ? 0 : driverList.size(),
+                sites == null ? 0 : sites.size());
+    }
+
+    /**
+     * Runs one phase in its own transaction, and reports it.
+     *
+     * <p>A failure here is logged and swallowed rather than aborting the rest.
+     * A demo database missing its trips is worth far more than one missing
+     * everything because the last phase timed out — and the log names the phase
+     * that failed, which the single-transaction version could not.
+     */
+    private <T> T inTransaction(String phase, java.util.function.Supplier<T> work) {
+        try {
+            long started = System.currentTimeMillis();
+            T result = transactions.execute(status -> work.get());
+            log.info("  seeded {} in {}ms", phase, System.currentTimeMillis() - started);
+            return result;
+        } catch (Exception e) {
+            log.error("  seeding {} FAILED: {}", phase, e.getMessage(), e);
+            return null;
+        }
     }
 
     private List<FulfilmentCentre> seedCentres() {
