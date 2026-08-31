@@ -55,6 +55,37 @@ ATTEMPTS = [
     ("POST",  "/api/v1/trips/from-shipment/%s" % SID, {"vehicleRegistration":"HIJACK-1"}),
 ]
 
+# The simulation routes are keyed by TRIP id, not shipment id, so probing only
+# /api/shipments/{id}/... and /api/v1/trips/from-shipment/{id} would miss them
+# entirely — the same way the old bulk /api/shipments/live escaped an audit that
+# only walked /{id}/ routes. A new write path that this script cannot reach is
+# an unaudited write path.
+r = urllib.request.Request(API+"/api/v1/trips/active"); r.add_header("Authorization","Bearer "+V1)
+try:
+    active = json.loads(urllib.request.urlopen(r).read())
+except Exception:
+    active = []
+
+if active:
+    TID = active[0]["tripId"]
+    print("  (vendor-1 also owns trip %s)" % TID)
+    ATTEMPTS += [
+        ("GET",    "/api/v1/trips/%s" % TID, None),
+        ("GET",    "/api/v1/trips/%s/positions" % TID, None),
+        ("POST",   "/api/v1/trips/%s/complete" % TID, None),
+        # Starting somebody else's vehicle moves their consignment and writes
+        # positions onto their evidence pack. It is a write like any other.
+        ("POST",   "/api/v1/trips/%s/simulation" % TID, {"timeScale": 60}),
+        ("DELETE", "/api/v1/trips/%s/simulation" % TID, None),
+        ("GET",    "/api/v1/trips/%s/simulation" % TID, None),
+        # /api/v1/trips/by-shipment/{id} is deliberately NOT probed here. It is
+        # a listing, and a correctly scoped listing answers 200 with an empty
+        # array rather than 404 — which this script, whose whole model is "the
+        # id must not resolve", would read as a leak. Listings are covered by
+        # api-smoke-test.sh, which signs in as two vendors and asserts their
+        # feeds do not intersect.
+    ]
+
 leaks = []
 print("  %-6s %-46s %s" % ("method", "path", "as vendor-2"))
 print("  " + "-"*74)

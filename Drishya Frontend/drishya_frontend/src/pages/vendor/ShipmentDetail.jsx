@@ -21,6 +21,7 @@ import Skeleton from '../../components/ui/Skeleton.jsx'
 import ShipmentMap from '../../components/map/ShipmentMap.jsx'
 import Timeline from '../../components/shipment/Timeline.jsx'
 import AsnPanel from '../../components/shipment/AsnPanel.jsx'
+import TripLauncher from '../../components/shipment/TripLauncher.jsx'
 import { trips as tripService } from '../../services/index.js'
 import SensorPanel from '../../components/shipment/SensorPanel.jsx'
 import {
@@ -313,6 +314,11 @@ export default function ShipmentDetail() {
         </div>
 
         <div className="stack gap-16">
+          <TripLauncher
+            shipment={shipment}
+            onShipmentChange={(next) => dispatch({ type: ACTIONS.SHIPMENTS_UPSERT, payload: next })}
+          />
+
           <Card>
             <CardHeader title="Driver & vehicle" />
             <CardBody>

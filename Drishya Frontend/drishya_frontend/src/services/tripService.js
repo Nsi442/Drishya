@@ -6,7 +6,7 @@
 // them that way; these are at /api/v1/** because that is what the specification
 // names. client.js already prefixes /api, so the paths here start at /v1.
 
-import { get, post } from './client.js'
+import { get, post, del } from './client.js'
 
 // --- trips ------------------------------------------------------------------
 
@@ -37,6 +37,40 @@ export function startTrip(shipmentId, { vehicleRegistration, driverId } = {}) {
 
 export function completeTrip(tripId) {
   return post(`/v1/trips/${tripId}/complete`, undefined, { label: 'closing the trip' })
+}
+
+/** Every trip against one consignment, most recent first. Usually none or one. */
+export function listTripsForShipment(shipmentId) {
+  return get(`/v1/trips/by-shipment/${shipmentId}`, { label: 'checking for a running trip' })
+}
+
+// --- server-side vehicle simulation -----------------------------------------
+//
+// The hosted equivalent of running simulator/simulate.py. The backend drives
+// the vehicle along the shipment's own route and ingests SIMULATED fixes on a
+// timer, so unlike the browser simulation in hooks/useLiveShipments.js it keeps
+// going with no tab open. That is the whole reason it is server-side: a demo
+// left running over lunch has actually moved by the time somebody looks.
+
+/**
+ * Starts a vehicle on a trip. Both options have server-side defaults.
+ *
+ * `timeScale` is simulated seconds per real second — 60 puts a 130 km lane at
+ * a couple of minutes. Pass 1 for real time, which is the honest setting if you
+ * are measuring anything rather than showing somebody.
+ */
+export function startSimulation(tripId, { speedKmph, timeScale } = {}) {
+  return post(`/v1/trips/${tripId}/simulation`, { speedKmph, timeScale },
+    { label: 'starting the vehicle' })
+}
+
+export function stopSimulation(tripId) {
+  return del(`/v1/trips/${tripId}/simulation`, { label: 'stopping the vehicle' })
+}
+
+/** Throws a 404 ServiceError when the trip has never been simulated. */
+export function getSimulation(tripId) {
+  return get(`/v1/trips/${tripId}/simulation`, { label: 'reading the vehicle' })
 }
 
 /**

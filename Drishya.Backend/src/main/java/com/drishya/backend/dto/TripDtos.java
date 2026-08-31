@@ -1,9 +1,11 @@
 package com.drishya.backend.dto;
 
 import com.drishya.backend.domain.enums.PositionSource;
+import com.drishya.backend.domain.enums.SimulationStatus;
 import com.drishya.backend.domain.enums.TripEventType;
 import com.drishya.backend.domain.enums.TripStatus;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Positive;
 
 import java.util.List;
 import java.util.Map;
@@ -152,5 +154,50 @@ public final class TripDtos {
             long at,
             String label,
             Map<String, Object> payload) {
+    }
+
+    /**
+     * What the browser asks for when it starts a server-side vehicle.
+     *
+     * <p>Both fields are optional and both are bounded. They are knobs on a
+     * demo, not a control surface: a caller who asks for 400 km/h gets the
+     * ceiling rather than an error, because the useful response to "drive it
+     * faster" is a faster vehicle, not a 400.
+     */
+    public record StartSimulationRequest(
+            @Positive(message = "Speed must be a positive number of km/h.")
+            Double speedKmph,
+
+            @Positive(message = "Time scale must be positive.")
+            Double timeScale) {
+    }
+
+    /**
+     * A running (or finished) server-side vehicle, on the wire.
+     *
+     * <p>{@code source} is stated explicitly rather than left to be inferred.
+     * Every fix this produces is SIMULATED, and the one thing a reader of an
+     * evidence pack must never have to guess is which of those two things they
+     * are looking at.
+     */
+    public record SimulationView(
+            String tripId,
+            SimulationStatus status,
+            PositionSource source,
+            double progress,
+            double travelledKm,
+            double routeKm,
+            double speedKmph,
+            double timeScale,
+            long startedAt,
+            Long endedAt,
+
+            /**
+             * Roughly how much longer the vehicle has, in real seconds — the
+             * remaining distance at the configured speed, divided by the time
+             * scale. What a person watching actually wants to know, and not
+             * derivable in the browser without duplicating the tick's maths.
+             */
+            Long realSecondsRemaining) {
     }
 }

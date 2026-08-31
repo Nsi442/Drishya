@@ -172,6 +172,15 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/trips/from-shipment/**")
                         .hasAnyRole("VENDOR_ADMIN", "DISPATCHER")
 
+                        // Starting and stopping a simulated vehicle is dispatch,
+                        // not telemetry. Both verbs are listed: a DELETE left
+                        // off the list falls through to "authenticated", and a
+                        // driver's token could park the vendor's vehicle.
+                        .requestMatchers(HttpMethod.POST, "/api/v1/trips/*/simulation")
+                        .hasAnyRole("VENDOR_ADMIN", "DISPATCHER")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/trips/*/simulation")
+                        .hasAnyRole("VENDOR_ADMIN", "DISPATCHER")
+
                         // Receiving actions belong to the fulfilment centre desk.
                         .requestMatchers(HttpMethod.POST, "/api/fc/shipments/*/gate-in",
                                 "/api/fc/shipments/*/gate-out", "/api/fc/shipments/*/grn")
