@@ -475,11 +475,16 @@ Resources:
     Properties:
       CachePolicyConfig:
         Name: !Sub "${AWS::StackName}-bundle"
-        Comment: >-
-          Vite fingerprints every asset filename, so a long TTL is safe for
-          them. index.html is the one file that must not be pinned — it is what
-          points at the new fingerprints — and an invalidation on deploy is what
-          releases it.
+        # Vite fingerprints every asset filename, so a long TTL is safe for
+        # them. index.html is the one file that must not be pinned — it is what
+        # points at the new fingerprints — and the invalidation on deploy is
+        # what releases it.
+        #
+        # The reasoning lives in this YAML comment, not in Comment: below.
+        # CloudFront caps that field at 128 characters and rejects the whole
+        # stack when it is longer, with "The parameter Comment is too big" —
+        # and cfn-lint does not measure it, so it passes every local check.
+        Comment: Long TTL for fingerprinted assets; index.html is released by the deploy invalidation.
         DefaultTTL: 86400
         MinTTL: 0
         MaxTTL: 31536000
@@ -510,11 +515,12 @@ Resources:
     Properties:
       OriginRequestPolicyConfig:
         Name: !Sub "${AWS::StackName}-api-origin"
-        Comment: >-
-          Forwards the bearer token and every query parameter. Without the
-          Authorization header the API answers 401 to its own frontend, and
-          without the query strings every filter, sort and page silently
-          collapses to its default.
+        # Without the Authorization header the API answers 401 to its own
+        # frontend, and without the query strings every filter, sort and page
+        # silently collapses to its default. Both are the whole point of this
+        # policy. Kept short below for the 128-character cap — see the note on
+        # BundleCachePolicy.
+        Comment: Forwards the bearer token and every query parameter to the API.
         CookiesConfig: { CookieBehavior: none }
         QueryStringsConfig: { QueryStringBehavior: all }
         HeadersConfig:
