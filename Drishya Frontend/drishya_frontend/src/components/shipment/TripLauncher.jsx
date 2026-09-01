@@ -164,7 +164,12 @@ export default function TripLauncher({ shipment, onShipmentChange }) {
   // saying nothing here.
   if (status === 'error') return null
 
-  if (!trip && !canStart) return null
+  // A consignment that is finished and never had a trip has nothing to say
+  // here; the timeline already tells that story. But "blocked, and here is
+  // why" is not the same as "nothing to show" — rendering nothing for a
+  // consignment held up by its paperwork leaves somebody hunting the sidebar
+  // for a button that was never going to appear.
+  if (!trip && !canStart && !docsPending) return null
 
   return (
     <Card>
@@ -176,6 +181,13 @@ export default function TripLauncher({ shipment, onShipmentChange }) {
           : null}
       />
       <CardBody>
+        {docsPending && !trip ? (
+          <p className="t-sm c-muted">
+            This consignment cannot be dispatched while its paperwork is outstanding. Clear the
+            documents on the Shipping notice tab and the option to start the trip appears here.
+          </p>
+        ) : null}
+
         {canStart ? (
           <div className="stack gap-12">
             <p className="t-sm c-muted">

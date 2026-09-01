@@ -49,3 +49,9 @@ ml/data/
 /*.png
 /*.mjs
 !Drishya.Backend/scripts/*.mjs
+
+# Written by aws/deploy.sh: the database master password and the JWT signing
+# key for the deployed stack. Kept because a re-run must reuse them — changing
+# the database password on a live instance leaves the container authenticating
+# with the old one — but it is exactly the file that must never be committed.
+/.aws-secrets.env
