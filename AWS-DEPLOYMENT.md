@@ -94,6 +94,30 @@ Two things worth doing before you deploy:
 
 ---
 
+## Running it for a few weeks
+
+**Do not stop the instance to save money.** CloudFront reaches the API at the
+instance's public DNS name, and that name is derived from its public IP — which
+AWS releases on stop and reassigns on start. Stop and start it and the
+distribution is left pointing at a host that no longer exists: the bundle keeps
+loading, every API call fails, and nothing in the console looks wrong. A
+**reboot** is fine; the address survives it. If you do stop it, update the
+`api-instance` origin's domain name in the distribution to the new one.
+
+It is also a false economy. Three weeks of a `t3.micro` is about **$5**, and
+stopping it between demos might save half of that.
+
+The database is the same story in reverse: a stopped RDS instance keeps billing
+for its storage and **restarts itself after seven days**, so stopping it saves
+almost nothing and quietly comes back.
+
+**Put the teardown date in your calendar now, not at the end.** Three weeks of
+the whole stack is roughly $17, which any credit covers — the risk is not the
+three weeks, it is month four, when nobody is looking and the credits have run
+out. `scripts/teardown.sh aws` is one command and takes a few minutes.
+
+---
+
 ## Prerequisites
 
 - An AWS account, and `aws` CLI v2 configured (`aws sts get-caller-identity`

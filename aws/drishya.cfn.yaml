@@ -259,10 +259,30 @@ Resources:
       # inside this VPC.
       PubliclyAccessible: false
       MultiAZ: false
-      BackupRetentionPeriod: 1
+      # No automated backups, and no minor-version upgrades. Both are the right
+      # settings for a service that lives for years and the wrong ones for a
+      # demo that lives for weeks.
+      #
+      # The seeder rebuilds this database from fixed seeds on every boot, so a
+      # nightly snapshot preserves nothing that cannot be recreated in ninety
+      # seconds — and enabling backups also opens a backup window, which is one
+      # more span of time in which the database can be briefly slow while
+      # somebody is presenting.
+      #
+      # Same reasoning for the upgrade: a minor-version upgrade restarts the
+      # instance inside its maintenance window, and the cost of that landing
+      # mid-demo is far higher than the cost of running three weeks on the minor
+      # this was created with. Turn both back on for anything long-lived.
+      BackupRetentionPeriod: 0
+      AutoMinorVersionUpgrade: false
+
+      # Pinned rather than left to AWS, which otherwise picks a window per
+      # region that may sit squarely in the working day. 19:00-19:30 UTC is
+      # after midnight in India, where the lanes in this data are.
+      PreferredMaintenanceWindow: "Sun:19:00-Sun:19:30"
+
       DeletionProtection: false
       EnablePerformanceInsights: false
-      AutoMinorVersionUpgrade: true
 
   # --- image registry ------------------------------------------------------
 
