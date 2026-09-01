@@ -4,16 +4,21 @@ import com.drishya.backend.config.AuthTokenFilter;
 import com.drishya.backend.dto.PositionDtos.IngestAck;
 import com.drishya.backend.dto.PositionDtos.PositionBatch;
 import com.drishya.backend.dto.PositionDtos.PositionView;
+import com.drishya.backend.dto.TripDtos.SimulationView;
+import com.drishya.backend.dto.TripDtos.StartSimulationRequest;
 import com.drishya.backend.dto.TripDtos.StartTripRequest;
 import com.drishya.backend.dto.TripDtos.TripDetail;
 import com.drishya.backend.dto.TripDtos.TripSummary;
+import com.drishya.backend.service.ApiException;
 import com.drishya.backend.service.CallerService;
 import com.drishya.backend.service.PositionIngestService;
 import com.drishya.backend.service.TripService;
+import com.drishya.backend.service.TripSimulationService;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -39,12 +44,14 @@ public class TripController {
 
     private final TripService tripService;
     private final PositionIngestService ingest;
+    private final TripSimulationService simulations;
     private final CallerService callers;
 
     public TripController(TripService tripService, PositionIngestService ingest,
-                          CallerService callers) {
+                          TripSimulationService simulations, CallerService callers) {
         this.tripService = tripService;
         this.ingest = ingest;
+        this.simulations = simulations;
         this.callers = callers;
     }
 
@@ -86,6 +93,57 @@ public class TripController {
     public TripDetail complete(@PathVariable String tripId,
                                @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId) {
         return tripService.complete(tripId, callers.requireTenant(userId));
+    }
+
+    /**
+     * Starts a server-side vehicle driving this trip's route.
+     *
+     * <p>The hosted equivalent of running {@code simulator/simulate.py}: same
+     * ingest path, same SIMULATED provenance, no terminal. Restarting a
+     * simulation that has arrived or been stopped is allowed and is the common
+     * case; one that is still running is a conflict.
+     *
+     * <p>The body is optional — {@code speedKmph} and {@code timeScale} both
+     * have defaults — so a bare POST is the whole happy path.
+     */
+    @PostMapping("/{tripId}/simulation")
+    public SimulationView startSimulation(
+            @PathVariable String tripId,
+            @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId,
+            @Valid @RequestBody(required = false) StartSimulationRequest request) {
+        return simulations.start(tripId, callers.requireTenant(userId), request);
+    }
+
+    /** Parks the vehicle where it stands. The trip and its fixes are untouched. */
+    @DeleteMapping("/{tripId}/simulation")
+    public SimulationView stopSimulation(
+            @PathVariable String tripId,
+            @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId) {
+        return simulations.stop(tripId, callers.requireTenant(userId));
+    }
+
+    /** 404 when this trip has never been simulated, which is the common case. */
+    @GetMapping("/{tripId}/simulation")
+    public SimulationView getSimulation(
+            @PathVariable String tripId,
+            @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId) {
+        return simulations.find(tripId, callers.requireTenant(userId))
+                .orElseThrow(() -> ApiException.notFound("No simulation on that trip."));
+    }
+
+    /**
+     * Every trip against one consignment.
+     *
+     * <p>The shipment detail page needs to know whether this consignment
+     * already has a vehicle on the road before it offers to start one, and
+     * asking for the tenant's whole active list and filtering it in the browser
+     * would grow with the fleet to answer a question about one row.
+     */
+    @GetMapping("/by-shipment/{shipmentId}")
+    public List<TripSummary> byShipment(
+            @PathVariable String shipmentId,
+            @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId) {
+        return tripService.listForShipment(shipmentId, callers.requireTenant(userId));
     }
 
     @GetMapping("/active")

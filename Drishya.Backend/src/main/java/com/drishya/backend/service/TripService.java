@@ -1,5 +1,6 @@
 package com.drishya.backend.service;
 
+import com.drishya.backend.domain.Driver;
 import com.drishya.backend.domain.Lane;
 import com.drishya.backend.domain.Position;
 import com.drishya.backend.domain.Shipment;
@@ -14,6 +15,7 @@ import com.drishya.backend.dto.TripDtos.TripEventView;
 import com.drishya.backend.dto.TripDtos.TripSummary;
 import com.drishya.backend.domain.EtaPrediction;
 import com.drishya.backend.dto.TripDtos.RiskState;
+import com.drishya.backend.repo.DriverRepository;
 import com.drishya.backend.repo.EtaPredictionRepository;
 import com.drishya.backend.repo.LaneRepository;
 import com.drishya.backend.repo.PositionRepository;
@@ -22,6 +24,7 @@ import com.drishya.backend.repo.TripEventRepository;
 import com.drishya.backend.repo.TripRepository;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -62,11 +65,14 @@ public class TripService {
     private final TripEventRepository tripEvents;
     private final LaneRepository lanes;
     private final EtaPredictionRepository predictions;
+    private final DriverRepository drivers;
 
     public TripService(TripRepository trips, ShipmentRepository shipments,
                        PositionRepository positions, TripEventRepository tripEvents,
-                       LaneRepository lanes, EtaPredictionRepository predictions) {
+                       LaneRepository lanes, EtaPredictionRepository predictions,
+                       DriverRepository drivers) {
         this.predictions = predictions;
+        this.drivers = drivers;
         this.trips = trips;
         this.shipments = shipments;
         this.positions = positions;
@@ -99,11 +105,36 @@ public class TripService {
             throw ApiException.conflict("That consignment is already closed.");
         }
 
+        // One vehicle at a time on one consignment.
+        //
+        // A second trip against the same shipment is a real case — refused at
+        // the gate and sent back is exactly why trips and shipments are
+        // separate tables — but it follows the first *ending*, it does not run
+        // beside it. Without this guard the two are indistinguishable, and the
+        // easiest way to reach the bad one is a double-click on Start trip:
+        // two ACTIVE trips, two vehicles, two sets of positions, and an ETA
+        // cycle predicting both against one slot.
+        trips.findByShipmentIdAndTenantId(shipmentId, tenantId).stream()
+                .filter(Trip::isActive)
+                .findFirst()
+                .ifPresent(active -> {
+                    throw ApiException.conflict(
+                            "That consignment already has trip " + active.getId()
+                                    + " on the road. Close it before starting another.");
+                });
+
         Trip trip = new Trip();
         trip.setId("trip-" + UUID.randomUUID().toString().substring(0, 8));
         trip.setShipment(shipment);
         trip.setTenant(shipment.getVendor());
         trip.setVehicleRegistration(vehicleRegistration);
+        // The requested driver, or the one the consignment was booked with.
+        //
+        // This parameter was accepted and dropped on the floor: the column, the
+        // entity field and TripRepository.findByDriverIdAndStatus ("a driver
+        // sees their own trips") all existed, and nothing ever populated them,
+        // so that query returned nothing for everybody.
+        trip.setDriver(resolveDriver(driverId, shipment));
         trip.setStatus(TripStatus.ACTIVE);
         trip.setStartedAt(Instant.now());
         trip.setLane(matchLane(shipment));
@@ -126,6 +157,31 @@ public class TripService {
         log.info("Trip {} started for shipment {} on lane {}", saved.getId(), shipmentId,
                 saved.getLane() == null ? "(unmatched)" : saved.getLane().getCode());
         return detail(saved);
+    }
+
+    /**
+     * The driver to record against the trip.
+     *
+     * <p>An unrecognised id falls back to the shipment's own driver rather than
+     * failing the dispatch. Losing the vehicle over a stale id in a request
+     * body would be the wrong trade — the consignment already names a driver,
+     * and that is the answer the paperwork will be checked against anyway.
+     */
+    private Driver resolveDriver(String driverId, Shipment shipment) {
+        if (driverId == null || driverId.isBlank()) {
+            return shipment.getDriver();
+        }
+        return drivers.findById(driverId).orElseGet(shipment::getDriver);
+    }
+
+    /** Every trip against one consignment, most recent first. */
+    @Transactional(readOnly = true)
+    public List<TripSummary> listForShipment(String shipmentId, String tenantId) {
+        return trips.findByShipmentIdAndTenantId(shipmentId, tenantId).stream()
+                .sorted(Comparator.comparing(Trip::getStartedAt,
+                        Comparator.nullsLast(Comparator.reverseOrder())))
+                .map(this::summary)
+                .toList();
     }
 
     /**

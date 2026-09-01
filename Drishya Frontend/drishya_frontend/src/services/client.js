@@ -118,6 +118,10 @@ function safeParse(text) {
 export const get = (path, options) => request(path, { ...options, method: 'GET' })
 export const post = (path, body, options) => request(path, { ...options, method: 'POST', body })
 export const patch = (path, body, options) => request(path, { ...options, method: 'PATCH', body })
+// No body: the only DELETE the API has identifies its target entirely by path,
+// and a request() with a body on DELETE would set a Content-Type that some
+// proxies drop the payload from anyway.
+export const del = (path, options) => request(path, { ...options, method: 'DELETE' })
 
 // --- client-side helpers -------------------------------------------------
 // Sorting and paging are done by the API now, but several pages hold the whole
