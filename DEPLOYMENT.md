@@ -1,5 +1,11 @@
 # Deploying Drishya
 
+> **There are two deployment paths, and this is the cheap one.** For AWS — RDS,
+> EC2 and CloudFront in a single CloudFormation stack — see
+> [`AWS-DEPLOYMENT.md`](AWS-DEPLOYMENT.md). It is the target `CLAUDE.md`
+> describes, and unlike everything below it **bills by the hour**. Pick one;
+> they are alternatives, not layers.
+
 Three providers, each doing the one thing it is good at:
 
 | Layer | Provider | Why |
