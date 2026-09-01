@@ -83,33 +83,134 @@ silently. If you cannot tell, assume the second and rely on the budget alarm.
 
 ---
 
-## Step 3 — Make a user that is not root (~10 min)
+## Step 3 — Make a user that is not root (~15 min)
 
-You need an access key for the CLI, and it must not be the root user's.
+This is the step people find most confusing, because IAM has its own vocabulary.
+Two sentences of background make the rest obvious.
 
-**IAM → Users → Create user**
+**Your root user is the email you signed up with.** It can do anything,
+including closing the account and changing the card, and it cannot be
+restricted. AWS's own advice is to lock it away after setup and never use it
+again.
 
-1. Name it something like `drishya-deploy`.
-2. Do **not** tick "provide user access to the console" — this identity is only
-   for the command line.
-3. **Set permissions → Attach policies directly → `AdministratorAccess`.**
+**An IAM user is a separate login inside the same account.** You decide what it
+can do. You will make one, give it the permissions this deploy needs, and use it
+for everything from here — both the console and the command line. Root goes back
+in the drawer.
 
-   A narrower policy would be better practice, and for a three-week project it
-   is not worth the afternoon: this stack touches CloudFormation, EC2, RDS, S3,
-   CloudFront, ECR, IAM and SSM, and assembling the minimal policy across all
-   eight is genuinely fiddly. `AdministratorAccess` on a user you delete
-   afterwards is the reasonable trade. **Do not** give this key to anyone or
-   commit it anywhere.
+An **access key** is that user's username-and-password for the command line: an
+*access key ID* (public-ish, starts `AKIA`) and a *secret access key* (private).
+The `aws` CLI has no browser and no MFA prompt — the key pair is the whole
+credential, which is why it matters where you put it.
 
-4. Create the user, then open it → **Security credentials → Create access key**.
-5. Choose the **Command Line Interface (CLI)** use case, acknowledge the
-   warning, and create.
+---
 
-You now see an **Access key ID** and a **Secret access key**.
+### 3a. Create the user
 
-> **The secret is shown exactly once.** Copy both somewhere safe before leaving
-> the page. If you lose the secret you cannot recover it — you delete the key
-> and make a new one, which is a minor annoyance, not a disaster.
+Sign in as root, then go to **IAM** (type it in the console's top search bar) →
+**Users** in the left sidebar → **Create user**.
+
+**Screen 1 — user details**
+
+- **User name:** `drishya-deploy`
+- **Provide user access to the AWS Management Console** — **tick this.**
+
+  You might expect a CLI-only identity here, and I originally suggested that.
+  Ticking it is better: it gives you one identity for the console *and* the
+  command line, which means you genuinely stop using root rather than using root
+  "just for looking at things". One login to remember instead of two.
+
+  Then choose **I want to create an IAM user**, set a **custom password** you
+  will remember, and untick "Users must create a new password at next sign-in"
+  — you are the user, so there is nobody to hand it to.
+
+**Screen 2 — permissions**
+
+Choose **Attach policies directly**, then search the list for
+**`AdministratorAccess`** and tick it. Ignore the group options; groups are for
+managing many people.
+
+> **Why administrator, honestly.** Least privilege is the right principle and I
+> am not following it here. This stack touches CloudFormation, EC2, RDS, S3,
+> CloudFront, ECR, IAM and SSM, and writing the minimal policy across those
+> eight — then debugging the deploy each time it turns out to be one action
+> short — is a genuine afternoon. For a three-week project on a fresh account
+> with nothing else in it, an administrator user you delete at teardown is the
+> better trade. It is a trade, not a best practice.
+
+**Screen 3 — review and create.** Create the user.
+
+If you enabled console access, this screen shows a **sign-in URL** that looks
+like `https://123456789012.signin.aws.amazon.com/console`. **Save that** — it is
+how you sign in as this user rather than as root. The number is your account ID.
+
+---
+
+### 3b. Create the access key
+
+Open the user you just made (**IAM → Users → `drishya-deploy`**) and go to the
+**Security credentials** tab. Scroll to **Access keys** → **Create access key**.
+
+**Screen 1 — use case.** A list of radio buttons. Choose **Command Line
+Interface (CLI)**.
+
+AWS then shows a yellow panel recommending alternatives — CloudShell, or
+Identity Center. Both are reasonable in general and neither suits a one-off
+deploy from your own laptop. Tick **"I understand the above recommendation and
+want to proceed to create an access key"** and continue.
+
+**Screen 2 — description tag.** Optional. `drishya deploy, delete after
+<date>` is worth typing, because in six months this key will otherwise be an
+unexplained credential with administrator rights.
+
+**Screen 3 — retrieve keys.** You now see:
+
+```
+Access key       AKIA................
+Secret access key ****************************************   [Show]
+```
+
+> **The secret is displayed exactly once.** Close this page without copying it
+> and it is unrecoverable — not by you, not by AWS support. The fix is to delete
+> the key and create another, which takes two minutes. Annoying, not fatal.
+
+Click **Download .csv file**, or press **Show** and copy both values.
+
+---
+
+### 3c. Put the keys somewhere sensible
+
+**Good:** your password manager, as a new entry with both values.
+
+**Acceptable for three weeks:** the downloaded CSV, in your Documents folder,
+deleted at teardown.
+
+**Not acceptable:** anywhere inside a git repository, a Slack or WhatsApp
+message, a screenshot, or a file called `keys.txt` on the Desktop. An
+administrator access key on a public GitHub repository is found by scanners in
+**minutes**, not days, and the usual outcome is a large bill for someone else's
+crypto mining.
+
+In the next step, `aws configure` writes these into `~/.aws/credentials` — a
+plain text file in your home directory. That is normal and is how every AWS tool
+expects to find them. It is also why the file is outside the project directory:
+nothing you `git add` can ever pick it up.
+
+---
+
+### 3d. If something goes wrong later
+
+| What you see | What it means |
+|---|---|
+| `InvalidClientTokenId` | The access key ID is wrong, or the key was deleted |
+| `SignatureDoesNotMatch` | The secret is wrong — usually a truncated paste or a trailing space |
+| `AccessDenied` on a specific action | The policy did not attach. Check the user's Permissions tab shows `AdministratorAccess` |
+| `ExpiredToken` | You pasted temporary credentials from somewhere else. These keys do not expire |
+
+**If you ever think a key has leaked:** IAM → Users → the user → Security
+credentials → the key → **Deactivate**, then **Delete**. It stops working
+everywhere immediately. Create a new one and re-run `aws configure`. Do this
+first and worry about how it happened afterwards.
 
 ---
 
@@ -246,7 +347,13 @@ Then, optionally:
 
 - **IAM → Users → `drishya-deploy` → Delete.** The access key stops working
   everywhere the moment you do, which is worth doing whether or not you keep the
-  account.
+  account — an administrator key with no owner is the thing you do not want
+  sitting around.
+
+  Note this also removes your console login, so root becomes the only way back
+  in. That is fine when you are finished. If you expect to come back, deactivate
+  the *access key* only (Security credentials → the key → Deactivate) and leave
+  the user itself alone.
 - Keep the AWS account. Closing it forfeits any unused credits and your free
   tier, and it does not cancel charges already incurred — deleting the resources
   is what stops the meter, and you have just done that.
