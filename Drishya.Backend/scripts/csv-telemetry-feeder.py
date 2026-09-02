@@ -49,7 +49,6 @@ Standard library only -- no pip install on a machine that just wants to run it.
 import argparse
 import csv
 import json
-import math
 import os
 import ssl
 import sys
@@ -57,58 +56,16 @@ import time
 import urllib.error
 import urllib.request
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lane_geometry import (  # noqa: E402
+    LaneError, bearing_deg, cumulative, haversine_km, point_at_km, read_csv)
+
 # Mirrors TripSimulationService, so a laptop-fed trip and a server-fed one move
 # at the same rate and a viewer cannot tell which is which by watching.
 DEFAULT_SPEED_KMPH = 52.0
 DEFAULT_TIME_SCALE = 60.0
 FIX_INTERVAL_SIMULATED_S = 30.0
 MAX_FIXES_PER_BATCH = 500          # the endpoint's own @Size cap
-
-EARTH_RADIUS_KM = 6371.0088
-
-
-# --- geometry ---------------------------------------------------------------
-# Haversine in the client is fine; the rule against it applies to the backend,
-# where PostGIS is already in the query path and a second implementation could
-# disagree with it. Nothing here is stored or compared against a PostGIS result.
-
-def haversine_km(a, b):
-    lat1, lon1 = math.radians(a[0]), math.radians(a[1])
-    lat2, lon2 = math.radians(b[0]), math.radians(b[1])
-    dlat, dlon = lat2 - lat1, lon2 - lon1
-    h = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
-    return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(h))
-
-
-def bearing_deg(a, b):
-    lat1, lat2 = math.radians(a[0]), math.radians(b[0])
-    dlon = math.radians(b[1] - a[1])
-    y = math.sin(dlon) * math.cos(lat2)
-    x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(dlon)
-    return (math.degrees(math.atan2(y, x)) + 360.0) % 360.0
-
-
-def cumulative(points):
-    """Distance along the polyline at each vertex. First entry is always 0."""
-    out = [0.0]
-    for i in range(1, len(points)):
-        out.append(out[-1] + haversine_km(points[i - 1], points[i]))
-    return out
-
-
-def point_at_km(points, cum, km):
-    """Interpolate a position `km` along the polyline, clamped at both ends."""
-    if km <= 0:
-        return points[0]
-    if km >= cum[-1]:
-        return points[-1]
-    for i in range(1, len(cum)):
-        if cum[i] >= km:
-            span = cum[i] - cum[i - 1]
-            t = 0.0 if span == 0 else (km - cum[i - 1]) / span
-            (lat1, lon1), (lat2, lon2) = points[i - 1], points[i]
-            return (lat1 + (lat2 - lat1) * t, lon1 + (lon2 - lon1) * t)
-    return points[-1]
 
 
 # --- HTTP -------------------------------------------------------------------
@@ -273,7 +230,10 @@ def warn_if_far_from_origin(api, shipment_id, first_point):
 
 
 def cmd_feed(api, args):
-    points = read_csv(args.csv)
+    try:
+        points = read_csv(args.csv)
+    except LaneError as e:
+        raise SystemExit(str(e))
     cum = cumulative(points)
     total_km = cum[-1]
     if args.shipment:
