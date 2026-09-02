@@ -332,6 +332,22 @@ Resources:
             }]
           }
 
+  # --- logs ----------------------------------------------------------------
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    # Deleted with the stack. A log group that outlives the thing it logged is
+    # a bill nobody remembers agreeing to, and the teardown script would report
+    # everything gone while this kept billing.
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/drishya/${AWS::StackName}"
+      # Seven days, because this is a demo that lives for weeks. Retention is
+      # billed by the GB-month and "Never expire" is the console default, which
+      # is how a forgotten log group becomes the largest line on a small bill.
+      RetentionInDays: 7
+
   # --- instance ------------------------------------------------------------
 
   InstanceRole:
@@ -348,6 +364,19 @@ Resources:
         # Shell access without an open port, a key pair, or a bastion. This is
         # what makes SshCidr optional rather than necessary.
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        # Scoped to this stack's own log group rather than the managed
+        # CloudWatchAgentServerPolicy, which grants logs:* across the account
+        # plus SSM parameter reads this instance has no use for.
+        - PolicyName: ship-container-logs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "${LogGroup.Arn}:*"
 
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -428,12 +457,27 @@ Resources:
           # No -p on the API: it is reachable only from nginx, on the container
           # network. Publishing 8080 would expose an origin that bypasses the
           # proxy, on a box whose security group only expects port 80 to matter.
+          # Container output goes to CloudWatch instead of Docker's local
+          # json-file driver. Without this the only way to read an application
+          # log is a shell on the box, which is exactly what is unavailable
+          # when the account cannot open CloudShell or Session Manager.
+          #
+          # awslogs-create-group is deliberately absent: the group is a stack
+          # resource above, so it is created with a retention policy and
+          # deleted with the stack. Letting the driver create it would produce
+          # a group that never expires and survives teardown.
+          LOGOPTS="--log-driver awslogs \
+            --log-opt awslogs-region=${AWS::Region} \
+            --log-opt awslogs-group=${LogGroup}"
+
           docker run -d --name api --network drishya --restart always \
+            $LOGOPTS --log-opt awslogs-stream=api \
             --env-file /etc/drishya.env \
             -e JAVA_TOOL_OPTIONS="-Xmx448m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC" \
             "$API_IMAGE"
 
           docker run -d --name web --network drishya --restart always \
+            $LOGOPTS --log-opt awslogs-stream=web \
             -p 80:80 \
             "$WEB_IMAGE"
 
@@ -462,3 +506,9 @@ Outputs:
   InstanceId:
     Description: "Shell in without SSH: aws ssm start-session --target <this>"
     Value: !Ref ApiInstance
+
+  ApiLogStream:
+    Description: >-
+      Application log in the console, no shell needed. Filter for FORM-SUBMIT to
+      see submitted form bodies.
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/$252Fdrishya$252F${AWS::StackName}/log-events/api"
