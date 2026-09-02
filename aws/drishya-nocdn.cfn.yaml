@@ -417,7 +417,19 @@ Resources:
           # the secrets are in one root-owned file instead.
           install -m 600 /dev/null /etc/drishya.env
           cat > /etc/drishya.env <<ENV
-          SPRING_DATASOURCE_URL=jdbc:postgresql://${Database.Endpoint.Address}:${Database.Endpoint.Port}/drishya
+          # The query string is not decoration; without it this deployment
+          # has already been taken down once.
+          #
+          # socketTimeout: pgjdbc's default read timeout is infinite. An RDS
+          # reboot drops established connections without a TCP reset, so a
+          # checked-out connection blocks on read() forever and the pool of
+          # five wedges permanently. Every probe stays green while every real
+          # request hangs.
+          #
+          # reWriteBatchedInserts: documented at length in
+          # application.properties and silently absent here, so the deployed
+          # container was the one place that did not get it.
+          SPRING_DATASOURCE_URL=jdbc:postgresql://${Database.Endpoint.Address}:${Database.Endpoint.Port}/drishya?reWriteBatchedInserts=true&socketTimeout=30&tcpKeepAlive=true&connectTimeout=10
           SPRING_DATASOURCE_USERNAME=drishya
           SPRING_DATASOURCE_PASSWORD=${DbPassword}
           JWT_SECRET=${JwtSecret}
