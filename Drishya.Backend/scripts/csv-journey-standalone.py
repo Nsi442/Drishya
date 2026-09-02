@@ -212,27 +212,62 @@ class Api:
             return self.opener.open(req, timeout=timeout)
         return urllib.request.urlopen(req, timeout=timeout, context=self.ctx)
 
-    def call(self, method, path, body=None, timeout=45):
+    def call(self, method, path, body=None, timeout=45, retries=2):
+        """
+        One request, with a bounded retry for a dropped connection.
+
+        <p><b>A lost response is not a failed request.</b> "An existing
+        connection was forcibly closed" arrives from getresponse(), after the
+        request has been sent and quite possibly acted upon -- a trip started
+        this way was found alive on the server afterwards, with only the reply
+        lost in transit. So a retry can repeat work that already happened.
+
+        <p>Retries are therefore for reads and for writes the server itself
+        makes safe to repeat. Anything that would create a second consignment
+        passes retries=0 and the caller decides; see book().
+
+        <p>ConnectionResetError is an OSError, not a URLError. Catching only
+        the latter let a single dropped packet end the whole run with a
+        traceback, losing the rows that had not been reached yet.
+        """
         url = self.base + path
         data = json.dumps(body).encode() if body is not None else None
-        req = urllib.request.Request(url, data=data, method=method)
-        req.add_header("Content-Type", "application/json")
-        req.add_header("Accept", "application/json")
-        if self.token:
-            req.add_header("Authorization", "Bearer " + self.token)
-        try:
-            with self._open(req, timeout) as r:
-                raw = r.read().decode()
-                return json.loads(raw) if raw else None
-        except urllib.error.HTTPError as e:
-            raise ApiError(method, url, e.code, e.read().decode(errors="replace")[:600])
-        except urllib.error.URLError as e:
-            raise SystemExit(
-                "Could not reach %s (%s).\n\n"
-                "Check the address is http:// and not https:// -- this deployment has\n"
-                "no certificate. On a corporate desktop you may also need a proxy:\n"
-                "    set HTTPS_PROXY=http://your.proxy:8080\n"
-                "or pass --proxy http://your.proxy:8080" % (url, e.reason))
+
+        attempt = 0
+        while True:
+            req = urllib.request.Request(url, data=data, method=method)
+            req.add_header("Content-Type", "application/json")
+            req.add_header("Accept", "application/json")
+            if self.token:
+                req.add_header("Authorization", "Bearer " + self.token)
+            try:
+                with self._open(req, timeout) as r:
+                    raw = r.read().decode()
+                    return json.loads(raw) if raw else None
+
+            except urllib.error.HTTPError as e:
+                # The server answered. That is not a transport problem and
+                # repeating it would get the same answer.
+                raise ApiError(method, url, e.code, e.read().decode(errors="replace")[:600])
+
+            except urllib.error.URLError as e:
+                # Never reached the server: no host, refused, proxy in the way.
+                raise SystemExit(
+                    "Could not reach %s (%s).\n\n"
+                    "Check the address is http:// and not https:// -- this deployment has\n"
+                    "no certificate. On a corporate desktop you may also need a proxy:\n"
+                    "    set HTTPS_PROXY=http://your.proxy:8080\n"
+                    "or pass --proxy http://your.proxy:8080" % (url, e.reason))
+
+            except OSError as e:
+                # Reset, timeout, broken pipe -- mid-flight, outcome unknown.
+                attempt += 1
+                if attempt > retries:
+                    raise TransportError(method, url, e)
+                wait = 2 ** attempt
+                print("  ... connection dropped on %s %s (%s); retrying in %ds"
+                      % (method, path, type(e).__name__, wait))
+                time.sleep(wait)
 
     def login(self, email, password):
         auth = self.call("POST", "/api/auth/login",
@@ -243,6 +278,21 @@ class Api:
         # /api/auth/me to ask afterwards.
         self.user = auth.get("user") or {}
         return self.user
+
+
+class TransportError(Exception):
+    """
+    The connection failed mid-request, so whether the server acted is unknown.
+
+    <p>Deliberately not an ApiError: an ApiError carries the server's own
+    answer and is final, while this one means the caller may need to go and
+    look at what actually happened.
+    """
+
+    def __init__(self, method, url, cause):
+        self.method, self.url, self.cause = method, url, cause
+        super().__init__("%s %s failed in transit (%s). Whether the server "
+                         "acted on it is unknown." % (method, url, cause))
 
 
 class ApiError(Exception):
@@ -403,14 +453,77 @@ def book(api, ref, row, line, vendor_id, taken_vehicles, taken_drivers):
     }
 
     try:
-        shipment = api.call("POST", "/api/shipments", payload)
+        # retries=0: repeating this could book the consignment twice, and a
+        # duplicate on the vendor's board is worse than a row that failed
+        # loudly. If the connection drops, look for it rather than resend.
+        shipment = api.call("POST", "/api/shipments", payload, retries=0)
     except ApiError as e:
         raise RowError(line, e.message)
+    except TransportError:
+        found = find_recent_booking(api, payload)
+        if found:
+            print("  note    connection dropped, but %s was booked; continuing"
+                  % found["id"])
+            return found, fc, vehicle, driver
+        raise RowError(line, "the connection dropped while booking and no "
+                             "matching consignment was created. Re-run this row.")
 
     return shipment, fc, vehicle, driver
 
 
+def find_recent_booking(api, payload):
+    """
+    Did the booking we lost the reply to actually happen?
+
+    <p>Matched on the vendor's own reference rather than on a server id we
+    never received. Only consignments still in CREATED are considered: an
+    older one with the same reference has already been dispatched and is not
+    what this run just made.
+    """
+    try:
+        listing = api.call("GET", "/api/shipments/all") or []
+    except (ApiError, TransportError):
+        return None
+    rows = listing if isinstance(listing, list) else listing.get("content", [])
+
+    reference = payload.get("reference")
+    for s in rows:
+        if s.get("status") != "created":
+            continue
+        if reference and s.get("reference") == reference:
+            return s
+        if not reference and s.get("commodity") == payload.get("commodity") \
+                and s.get("cartons") == payload.get("cartons"):
+            return s
+    return None
+
+
 # --- driving ----------------------------------------------------------------
+
+def start_trip(api, shipment_id, vehicle, driver):
+    """
+    Dispatch the vehicle, tolerating a reply that never arrives.
+
+    <p>This is the call that failed in practice: the connection was reset
+    while the response came back, and the trip was found alive on the server
+    afterwards. Retrying blindly would have hit the API's own double-start
+    guard and read as an error; asking what exists is both safer and truer.
+    """
+    try:
+        trip = api.call("POST", "/api/v1/trips/from-shipment/" + shipment_id,
+                        {"vehicleRegistration": vehicle["regNumber"],
+                         "driverId": driver["id"]}, retries=0)
+        return trip["trip"]["tripId"]
+    except (TransportError, ApiError) as e:
+        existing = api.call("GET", "/api/v1/trips/by-shipment/" + shipment_id) or []
+        active = [t for t in existing
+                  if t.get("status") in ("active", "planned", "at_gate", "at_dock")]
+        if active:
+            print("  note    dispatch reply was lost, but trip %s is running; "
+                  "continuing" % active[0]["tripId"])
+            return active[0]["tripId"]
+        raise
+
 
 def driving_route(shipment, fc):
     """
@@ -516,10 +629,7 @@ def run(api, args):
             if args.book_only:
                 continue
 
-            trip = api.call("POST", "/api/v1/trips/from-shipment/" + shipment["id"],
-                            {"vehicleRegistration": vehicle["regNumber"],
-                             "driverId": driver["id"]})
-            trip_id = trip["trip"]["tripId"]
+            trip_id = start_trip(api, shipment["id"], vehicle, driver)
 
             route = driving_route(shipment, fc)
             if len(route) < 2:
@@ -531,8 +641,8 @@ def run(api, args):
             print("  started %-11s trip %s, %.0f km\n"
                   % (shipment["id"], trip_id, journeys[-1].total_km))
 
-        except (RowError, ApiError) as e:
-            failures.append(str(e))
+        except (RowError, ApiError, TransportError) as e:
+            failures.append("row %d: %s" % (n, e) if not isinstance(e, RowError) else str(e))
             print("  FAILED  %s" % e)
 
     if args.book_only:
@@ -561,10 +671,19 @@ def run(api, args):
                     continue
                 batch = j.tick(km_per_tick, fixes_per_tick)
                 try:
+                    # Position batches ARE safe to repeat: the trace is
+                    # append-only telemetry and a duplicated fix costs a
+                    # slightly denser line, not a wrong one.
                     ack = api.call("POST", "/api/v1/trips/%s/positions" % j.trip_id,
-                                   {"positions": batch})
+                                   {"positions": batch}, retries=3)
                 except ApiError as e:
                     print("  %-11s ingest rejected: %s" % (j.shipment_id, e.message))
+                    j.done = True
+                    continue
+                except TransportError as e:
+                    # One consignment losing its connection must not stop the
+                    # others, and the trip stays where it is either way.
+                    print("  %-11s %s" % (j.shipment_id, e))
                     j.done = True
                     continue
                 j.sent += ack.get("accepted", 0)
