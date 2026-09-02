@@ -1,0 +1,28 @@
+# Shell scripts must keep LF endings, on every platform.
+#
+# Git for Windows installs with core.autocrlf=true by default, so a clone there
+# rewrites every text file to CRLF. For a .java or .jsx file that is harmless.
+# For a script with a `#!` line it is not: bash reads the carriage return as
+# part of the interpreter path and of every command, and the failure is
+#
+#     bash: aws/deploy.sh: /usr/bin/env^M: bad interpreter
+#     $'\r': command not found
+#
+# which names a character nobody typed and points at nothing that is wrong.
+# Someone deploying this from Git Bash on Windows hits it on their first
+# command, and there is no clue in it that the cause is a checkout setting.
+*.sh text eol=lf
+
+# Same reasoning: these are read by the Amazon Linux instance and by psql, not
+# by anything on the machine that cloned them.
+*.sql text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+
+# Let Git decide for everything else, and never touch binaries.
+* text=auto
+*.png binary
+*.jpg binary
+*.pptx binary
+*.onnx binary
+*.geojson text eol=lf

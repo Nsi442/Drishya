@@ -1,9 +1,37 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
 Description: >-
-  Drishya on AWS — one t3.micro running the API container, one db.t4g.micro
-  running PostgreSQL 16 with PostGIS, and one CloudFront distribution serving
-  the Vite bundle from S3 and proxying /api to the instance.
+  Drishya on AWS, WITHOUT CloudFront — one t3.micro running both the nginx
+  frontend container and the API container, and one db.t4g.micro running
+  PostgreSQL 16 with PostGIS. Plain HTTP.
+
+# WHY THIS VARIANT EXISTS
+#
+# CloudFront refuses to create resources in a brand-new AWS account until a
+# human at AWS verifies it:
+#
+#   Your account must be verified before you can add new CloudFront resources.
+#   To verify your account, please contact AWS Support
+#
+# That is an account state, not a template fault, and the support case takes
+# hours. This deploys everything else in the meantime.
+#
+# WHAT IS THE SAME
+# The browser still talks to ONE origin, so CORS still never enters into it.
+# nginx does what the distribution did: it serves the bundle, rewrites unknown
+# paths to index.html for React Router, and proxies /api to the API container
+# over the container network. That configuration is not new — it is the same
+# nginx.conf docker-compose has used all along.
+#
+# WHAT IS LOST, AND IT IS ONE THING
+# HTTPS. The site answers on http://<instance>. Browser geolocation refuses to
+# run outside a secure context, so positions with source BROWSER cannot be
+# produced against this deployment. Everything else works: the server-side
+# vehicle simulation, the geofences, the ETA engine, Start trip, the maps.
+# OpenStreetMap tiles load fine — a page may pull HTTPS resources, it is the
+# reverse that browsers block.
+#
+# Move to aws/drishya.cfn.yaml once the account is verified.
 
 # WHAT IS DELIBERATELY NOT HERE, AND WHY
 #
@@ -77,18 +105,6 @@ Parameters:
     Type: String
     Default: latest
     Description: Tag of the API image in the ECR repository this stack creates.
-
-  CloudFrontPrefixListId:
-    Type: String
-    AllowedPattern: "pl-[0-9a-f]+"
-    Description: >-
-      The AWS-managed prefix list of CloudFront's origin-facing addresses. It is
-      owned by AWS and cannot be created here, and its id differs per region, so
-      it is looked up once and passed in:
-        aws ec2 describe-managed-prefix-lists --region <region>
-          --filters Name=prefix-list-name,Values=com.amazonaws.global.cloudfront.origin-facing
-          --query 'PrefixLists[0].PrefixListId' --output text
-      This is what keeps port 8080 closed to everything except the edge.
 
   LatestAmiId:
     Type: "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>"
@@ -176,15 +192,16 @@ Resources:
       GroupDescription: Drishya API instance
       VpcId: !Ref Vpc
       SecurityGroupIngress:
-        # Only CloudFront may reach the API port. The managed prefix list is
-        # maintained by AWS and covers every CloudFront edge; without it, port
-        # 8080 would be open to the internet and the TLS the distribution
-        # provides could simply be walked around.
+        # Port 80, open. There is no CloudFront in front of this variant, so the
+        # instance is the public face and nginx on it is what the browser talks
+        # to. 8080 is deliberately NOT opened: the API is reached only through
+        # nginx, on the container network, which is what keeps the browser on
+        # one origin.
         - IpProtocol: tcp
-          FromPort: 8080
-          ToPort: 8080
-          SourcePrefixListId: !Ref CloudFrontPrefixListId
-          Description: CloudFront edge locations only
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: The site, over plain HTTP
       Tags: [{ Key: Name, Value: !Sub "${AWS::StackName}-api-sg" }]
 
   SshIngress:
@@ -286,6 +303,14 @@ Resources:
 
   # --- image registry ------------------------------------------------------
 
+  WebRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${AWS::StackName}-web"
+      EmptyOnDelete: true
+      ImageScanningConfiguration:
+        ScanOnPush: true
+
   ApiRepository:
     Type: AWS::ECR::Repository
     Properties:
@@ -372,7 +397,15 @@ Resources:
           DB_POOL_SIZE=5
           ENV
 
-          IMAGE="$REGISTRY/${ApiRepository}:${ApiImageTag}"
+          API_IMAGE="$REGISTRY/${ApiRepository}:${ApiImageTag}"
+          WEB_IMAGE="$REGISTRY/${WebRepository}:${ApiImageTag}"
+
+          # nginx.conf proxies to http://api:8080 by that name, so the API
+          # container must be called "api" on a user-defined network — that is
+          # what gives Docker's embedded DNS a name to resolve. The default
+          # bridge network has no DNS at all and the proxy would fail to
+          # resolve, which nginx reports as 502 rather than as a name error.
+          docker network create drishya 2>/dev/null || true
 
           # Wait for the image rather than failing on it.
           #
@@ -384,235 +417,43 @@ Resources:
           # either order, and a pull that fails because ECR blipped is retried
           # instead of being fatal.
           for attempt in $(seq 1 40); do
-            if docker pull "$IMAGE"; then break; fi
-            echo "image not available yet (attempt $attempt); waiting"
+            if docker pull "$API_IMAGE" && docker pull "$WEB_IMAGE"; then break; fi
+            echo "images not available yet (attempt $attempt); waiting"
             sleep 30
           done
 
           # The image caps the heap at 320 MB for a 512 MB Render instance.
           # t3.micro is 1 GB, so the JVM is given more room here rather than
           # leaving it throttled by a setting tuned for a smaller host.
-          docker run -d --name drishya-api --restart always \
-            -p 8080:8080 \
+          # No -p on the API: it is reachable only from nginx, on the container
+          # network. Publishing 8080 would expose an origin that bypasses the
+          # proxy, on a box whose security group only expects port 80 to matter.
+          docker run -d --name api --network drishya --restart always \
             --env-file /etc/drishya.env \
-            -e JAVA_TOOL_OPTIONS="-Xmx512m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC" \
-            "$IMAGE"
+            -e JAVA_TOOL_OPTIONS="-Xmx448m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC" \
+            "$API_IMAGE"
 
-  # --- static bundle -------------------------------------------------------
-
-  WebBucket:
-    Type: AWS::S3::Bucket
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Delete
-    Properties:
-      # Private throughout. The bundle is served by CloudFront through an origin
-      # access control, never from the bucket's own endpoint — a public bucket
-      # is an unversioned second copy of the site with no TLS story.
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
-
-  WebBucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref WebBucket
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal: { Service: cloudfront.amazonaws.com }
-            Action: s3:GetObject
-            Resource: !Sub "${WebBucket.Arn}/*"
-            Condition:
-              StringEquals:
-                AWS:SourceArn: !Sub "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}"
-
-  OriginAccessControl:
-    Type: AWS::CloudFront::OriginAccessControl
-    Properties:
-      OriginAccessControlConfig:
-        Name: !Sub "${AWS::StackName}-oac"
-        OriginAccessControlOriginType: s3
-        SigningBehavior: always
-        SigningProtocol: sigv4
-
-  # --- edge ----------------------------------------------------------------
-
-  SpaRewriteFunction:
-    Type: AWS::CloudFront::Function
-    Properties:
-      Name: !Sub "${AWS::StackName}-spa-rewrite"
-      AutoPublish: true
-      FunctionConfig:
-        Runtime: cloudfront-js-2.0
-        Comment: Serve index.html for client-side routes, but never for a real file.
-      FunctionCode: |
-        function handler(event) {
-          var request = event.request;
-          // A path with a dot is an asset request. It must keep its 404: a
-          // missing JS chunk that silently returns index.html renders a blank
-          // page and "Unexpected token '<'", which says nothing about the
-          // actual cause.
-          if (request.uri.indexOf('.') !== -1) {
-            return request;
-          }
-          // Everything else is a React Router path — /vendor/shipments/SHP-1
-          // exists in the browser and not in the bucket.
-          request.uri = '/index.html';
-          return request;
-        }
-
-  # Defined here rather than referencing AWS's managed policies by their opaque
-  # UUIDs, so the template says what it does and cannot silently attach the
-  # wrong policy.
-  BundleCachePolicy:
-    Type: AWS::CloudFront::CachePolicy
-    Properties:
-      CachePolicyConfig:
-        Name: !Sub "${AWS::StackName}-bundle"
-        # Vite fingerprints every asset filename, so a long TTL is safe for
-        # them. index.html is the one file that must not be pinned — it is what
-        # points at the new fingerprints — and the invalidation on deploy is
-        # what releases it.
-        #
-        # The reasoning lives in this YAML comment, not in Comment: below.
-        # CloudFront caps that field at 128 characters and rejects the whole
-        # stack when it is longer, with "The parameter Comment is too big" —
-        # and cfn-lint does not measure it, so it passes every local check.
-        Comment: Long TTL for fingerprinted assets; index.html is released by the deploy invalidation.
-        DefaultTTL: 86400
-        MinTTL: 0
-        MaxTTL: 31536000
-        ParametersInCacheKeyAndForwardedToOrigin:
-          EnableAcceptEncodingGzip: true
-          EnableAcceptEncodingBrotli: true
-          CookiesConfig: { CookieBehavior: none }
-          HeadersConfig: { HeaderBehavior: none }
-          QueryStringsConfig: { QueryStringBehavior: none }
-
-  ApiCachePolicy:
-    Type: AWS::CloudFront::CachePolicy
-    Properties:
-      CachePolicyConfig:
-        Name: !Sub "${AWS::StackName}-api-no-cache"
-        Comment: The API is never cached. Every response is per-tenant.
-        DefaultTTL: 0
-        MinTTL: 0
-        MaxTTL: 0
-        ParametersInCacheKeyAndForwardedToOrigin:
-          EnableAcceptEncodingGzip: false
-          CookiesConfig: { CookieBehavior: none }
-          HeadersConfig: { HeaderBehavior: none }
-          QueryStringsConfig: { QueryStringBehavior: none }
-
-  ApiOriginRequestPolicy:
-    Type: AWS::CloudFront::OriginRequestPolicy
-    Properties:
-      OriginRequestPolicyConfig:
-        Name: !Sub "${AWS::StackName}-api-origin"
-        # Without the Authorization header the API answers 401 to its own
-        # frontend, and without the query strings every filter, sort and page
-        # silently collapses to its default. Both are the whole point of this
-        # policy. Kept short below for the 128-character cap — see the note on
-        # BundleCachePolicy.
-        Comment: Forwards the bearer token and every query parameter to the API.
-        CookiesConfig: { CookieBehavior: none }
-        QueryStringsConfig: { QueryStringBehavior: all }
-        HeadersConfig:
-          HeaderBehavior: whitelist
-          Headers: [Authorization, Content-Type, Accept, Origin, Referer]
-
-  Distribution:
-    Type: AWS::CloudFront::Distribution
-    Properties:
-      DistributionConfig:
-        Enabled: true
-        Comment: !Sub "${AWS::StackName} — bundle and API on one origin"
-        DefaultRootObject: index.html
-        HttpVersion: http2
-        PriceClass: PriceClass_100
-        Origins:
-          - Id: s3-bundle
-            DomainName: !GetAtt WebBucket.RegionalDomainName
-            OriginAccessControlId: !GetAtt OriginAccessControl.Id
-            S3OriginConfig: {}
-          - Id: api-instance
-            DomainName: !GetAtt ApiInstance.PublicDnsName
-            CustomOriginConfig:
-              # HTTP to the origin, HTTPS to the viewer. The instance has no
-              # certificate of its own and the leg from the edge to it is inside
-              # AWS, reachable only from CloudFront by the security group above.
-              # A certificate on the instance would need a domain and a renewal
-              # story for no gain the security group does not already give.
-              OriginProtocolPolicy: http-only
-              HTTPPort: 8080
-              OriginReadTimeout: 30
-        DefaultCacheBehavior:
-          TargetOriginId: s3-bundle
-          ViewerProtocolPolicy: redirect-to-https
-          AllowedMethods: [GET, HEAD]
-          CachePolicyId: !Ref BundleCachePolicy
-          Compress: true
-          FunctionAssociations:
-            - EventType: viewer-request
-              FunctionARN: !GetAtt SpaRewriteFunction.FunctionMetadata.FunctionARN
-        CacheBehaviors:
-          - PathPattern: /api/*
-            TargetOriginId: api-instance
-            ViewerProtocolPolicy: redirect-to-https
-            # POST, PATCH and DELETE are all in use — position ingest, dock
-            # assignment and stopping a simulated vehicle. A GET/HEAD-only
-            # behaviour answers 403 to every write in the product.
-            AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
-            CachePolicyId: !Ref ApiCachePolicy
-            OriginRequestPolicyId: !Ref ApiOriginRequestPolicy
-            Compress: true
-          - PathPattern: /actuator/*
-            TargetOriginId: api-instance
-            ViewerProtocolPolicy: redirect-to-https
-            AllowedMethods: [GET, HEAD]
-            CachePolicyId: !Ref ApiCachePolicy
-            Compress: false
-        # NOTE: no CustomErrorResponses. It is the obvious way to do SPA routing
-        # and it is wrong here — the setting is distribution-wide, so it would
-        # also turn the API's 404s into index.html with status 200. This API
-        # answers 404 rather than 403 for another tenant's record on purpose;
-        # rewriting that to a 200 would break the contract and the frontend's
-        # error handling at once. The viewer-request function above does the
-        # rewrite on the bundle behaviour only.
-        ViewerCertificate:
-          # The free *.cloudfront.net certificate. Enough for HTTPS, which is
-          # what browser geolocation and the non-mixed-content requirement need.
-          # Bring your own domain by adding Aliases and an ACM certificate in
-          # us-east-1.
-          CloudFrontDefaultCertificate: true
+          docker run -d --name web --network drishya --restart always \
+            -p 80:80 \
+            "$WEB_IMAGE"
 
 Outputs:
 
   SiteUrl:
-    Description: Open this. Frontend and API are both behind it.
-    Value: !Sub "https://${Distribution.DomainName}"
+    Description: Open this. HTTP, not HTTPS — see the note at the top of the template.
+    Value: !Sub "http://${ApiInstance.PublicDnsName}"
 
   ApiHealth:
-    Description: Readiness endpoint. Check this first if the site looks empty.
-    Value: !Sub "https://${Distribution.DomainName}/actuator/health/readiness"
-
-  BundleBucket:
-    Description: Sync the Vite build output here, then invalidate the distribution.
-    Value: !Ref WebBucket
-
-  DistributionId:
-    Description: Needed for cache invalidation after a frontend deploy.
-    Value: !Ref Distribution
+    Description: Readiness endpoint, through nginx. Check this first if the site looks empty.
+    Value: !Sub "http://${ApiInstance.PublicDnsName}/actuator/health/readiness"
 
   EcrRepository:
     Description: Push the API image here.
     Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ApiRepository}"
+
+  WebEcrRepository:
+    Description: Push the frontend image here.
+    Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${WebRepository}"
 
   DbEndpoint:
     Description: Reachable only from the instance. Run db/rds-setup.sql against it.

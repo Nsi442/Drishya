@@ -55,3 +55,9 @@ ml/data/
 # the database password on a live instance leaves the container authenticating
 # with the old one — but it is exactly the file that must never be committed.
 /.aws-secrets.env
+
+# Python bytecode. The repository has no Python package — the scripts/ files are
+# run directly — so a __pycache__ only ever appears because something imported
+# one as a module, which is what a test harness does. Build cruft, not work.
+__pycache__/
+*.py[cod]

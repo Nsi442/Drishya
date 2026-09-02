@@ -120,6 +120,11 @@ out. `scripts/teardown.sh aws` is one command and takes a few minutes.
 
 ## Prerequisites
 
+> **Never used AWS before?** Start at
+> [`FIRST-TIME-AWS.md`](FIRST-TIME-AWS.md) instead. The first bullet below hides
+> about an hour of one-time setup — account, MFA, credits, a non-root user,
+> access keys and the CLI — and that file walks through all of it.
+
 - An AWS account, and `aws` CLI v2 configured (`aws sts get-caller-identity`
   should print your account).
 - Docker, to build and push the API image.
