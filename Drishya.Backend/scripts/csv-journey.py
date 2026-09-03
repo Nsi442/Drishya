@@ -80,7 +80,7 @@ class Api:
     """
 
     def __init__(self, base_url, insecure=False, proxy=None):
-        self.base = base_url.rstrip("/")
+        self.base = normalise_base_url(base_url)
         self.token = None
         self.ctx = ssl._create_unverified_context() if insecure else None
         handlers = []
@@ -159,6 +159,31 @@ class Api:
         # /api/auth/me to ask afterwards.
         self.user = auth.get("user") or {}
         return self.user
+
+
+def normalise_base_url(raw):
+    """
+    Check the address before it is used, not on the first failed request.
+
+    <p>Pasting a URL after typing the scheme yields http://http://host, which
+    urllib reports as a name it could not resolve -- naming the doubled string
+    but not the doubling. Caught here, it says what is wrong.
+    """
+    url = (raw or "").strip().rstrip("/")
+    if not url:
+        raise SystemExit("--base-url is empty. Pass the site address.")
+
+    if url.count("://") > 1:
+        fixed = url[url.rindex("://") - 4:] if url.rindex("://") >= 4 else url
+        raise SystemExit(
+            "The address has the scheme twice:\n    %s\n\n"
+            "You probably meant:\n    %s" % (url, fixed))
+
+    if not url.startswith(("http://", "https://")):
+        raise SystemExit(
+            "The address needs a scheme:\n    http://%s" % url)
+
+    return url
 
 
 class TransportError(Exception):
@@ -271,8 +296,36 @@ class RowError(Exception):
 # --- booking ----------------------------------------------------------------
 
 def read_rows(path):
-    with open(path, newline="", encoding="utf-8-sig") as fh:
-        rows = list(csv.DictReader(fh))
+    """
+    Load the consignment rows.
+
+    <p>The two ways this goes wrong on a fresh machine are a file that was
+    never created and a file saved as .csv.txt by a Windows dialog with
+    extensions hidden. Both used to surface as a bare FileNotFoundError
+    traceback, which names the file but not what to do about it.
+    """
+    try:
+        with open(path, newline="", encoding="utf-8-sig") as fh:
+            rows = list(csv.DictReader(fh))
+    except FileNotFoundError:
+        hint = ""
+        folder = os.path.dirname(os.path.abspath(path)) or "."
+        try:
+            near = [f for f in os.listdir(folder)
+                    if f.lower().startswith(os.path.basename(path).lower())]
+            if near:
+                hint = "\n\nThere is a %s here -- Windows hides extensions, so a file\n" \
+                       "saved from a browser often ends up named that way. Rename it." % near[0]
+        except OSError:
+            pass
+        raise SystemExit(
+            "No such file: %s\n\n"
+            "Create a starter one first:\n"
+            "    python %s --template%s"
+            % (path, os.path.basename(sys.argv[0]), hint))
+    except IsADirectoryError:
+        raise SystemExit("%s is a folder, not a CSV file." % path)
+
     if not rows:
         raise SystemExit("%s has a header but no rows." % path)
     return rows
