@@ -21,6 +21,15 @@ export function listShipments({ filters = {}, sort = {}, page = 1, pageSize = 25
 }
 
 /** Unpaginated — for maps, boards and the live tick. */
+/**
+ * The whole visible set.
+ *
+ * `withRoute: false` asks the server to leave the polylines out. Use it for the
+ * poll, which re-reads this set every few seconds and already holds every route
+ * it has seen — a route is fixed at booking, and once it is a real road it is
+ * several hundred points and most of the response. The store carries the held
+ * route forward; see SHIPMENTS_SYNC.
+ */
 export function listAllShipments(filters = {}) {
   return get('/shipments/all', {
     label: 'loading shipments',
@@ -29,6 +38,7 @@ export function listAllShipments(filters = {}) {
       status: filters.status,
       fcId: filters.fcId,
       vendorId: filters.vendorId,
+      withRoute: filters.withRoute === false ? 'false' : undefined,
       delayedOnly: filters.delayedOnly ? 'true' : undefined,
     },
   })

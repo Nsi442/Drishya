@@ -307,6 +307,30 @@ notified nobody** — the counted row was rolled back with the rest. A per-item 
 says. Re-read the entity inside its own transaction: the one from the listing is detached, and
 writing to it updates nothing.
 
+**Splitting a `@Transactional` method leaves the annotation behind.** Adding a `withRoute`
+overload to `ShipmentService.listAll` moved the body to a new arity and left
+`@Transactional(readOnly = true)` on the old one. Both are called directly by the controller, and
+Spring's advice lives in a proxy an in-class call never crosses — so the new method ran with no
+session and `Mapper` threw `LazyInitializationException` on its first lazy hop
+(`vehicle.getCarrier()`), turning the endpoint every portal polls into a 500. It compiled, and
+nothing short of calling the endpoint would have found it. **Annotate every arity that is an
+entry point.**
+
+**The poll asks for everything that changes and nothing that cannot.** A route is fixed at
+booking and, once it is a real road, several hundred points — most of the response. Measured on
+the receiving desk's feed with real routes: 102.6 KB a poll with them, 20.3 KB without.
+`/api/shipments/all?withRoute=false` omits them, `SHIPMENTS_SYNC` carries the held route forward,
+and an empty route on the wire means "unchanged, you already have it" rather than "no route".
+A consignment genuinely new to the client has nothing held, so the hook does one full read to
+recover the missing polylines — which is why the poll must not run before `useShipmentStore`'s
+first load lands: with an empty store every row looks new and the recovery fetches the whole set
+a second time on every sign-in.
+
+**`vite preview` does not inherit `server.proxy`.** Without `preview.proxy` the production build
+cannot reach the API and every page loads empty, which reads as an application fault. It matters
+because `preview` is the only way to see the build the deploy ships: `dev` runs React in
+StrictMode, which double-invokes every effect and so doubles any request count measured there.
+
 **Absent is not zero, in the UI as well as the API.** `formatTime`/`formatRelative` handed a
 null to `new Date(null)` — epoch 0 — and rendered "ETA 05:30 am · 20695d ago" in the same
 typeface as a real arrival. `DelayPill` defaulted a missing delay to 0 and displayed a confident

@@ -186,12 +186,28 @@ export function rootReducer(state, action) {
     // nothing will ever update again is worse than a missing one.
     case ACTIONS.SHIPMENTS_SYNC: {
       const { rows, flashed } = action.payload
+
+      // The poll asks for these without their polylines, so carry forward the
+      // one already held. A route is fixed at booking and several hundred
+      // points long once it is a real road, which makes it the single largest
+      // thing in the response and the only part of it that never changes.
+      //
+      // An empty array from the server therefore means "unchanged, ask the
+      // detail view", not "this consignment has no route". A row genuinely new
+      // to this client has no previous route to carry, and the hook notices
+      // that and refetches in full rather than leaving a line off the map.
+      const merged = rows.map((row) => {
+        if (row.route?.length) return row
+        const held = state.shipments.byId[row.id]?.route
+        return held?.length ? { ...row, route: held } : row
+      })
+
       return {
         ...state,
         shipments: {
           ...state.shipments,
-          byId: indexById(rows),
-          ids: rows.map((s) => s.id),
+          byId: indexById(merged),
+          ids: merged.map((s) => s.id),
           status: 'ready',
           error: null,
           lastTick: Date.now(),

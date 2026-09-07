@@ -57,6 +57,7 @@ export default function useLiveShipments({ onEvent, hold = false } = {}) {
   const enabledRef = useRef(state.ui.liveEnabled)
   const holdRef = useRef(hold)
   const signedInRef = useRef(Boolean(state.auth.user))
+  const loadedRef = useRef(state.shipments.status === 'ready')
   const onEventRef = useRef(onEvent)
   const inFlightRef = useRef(false)
 
@@ -66,6 +67,7 @@ export default function useLiveShipments({ onEvent, hold = false } = {}) {
     shipmentsRef.current = state.shipments
     enabledRef.current = state.ui.liveEnabled
     signedInRef.current = Boolean(state.auth.user)
+    loadedRef.current = state.shipments.status === 'ready'
     holdRef.current = hold
     onEventRef.current = onEvent
   })
@@ -109,6 +111,13 @@ export default function useLiveShipments({ onEvent, hold = false } = {}) {
     // error toast. Cheaper to not ask.
     if (!signedInRef.current) return
 
+    // Nothing to keep up to date yet. useShipmentStore owns the first read —
+    // the full one, routes included — and polling before it lands would race
+    // it with a set the store cannot merge: every row would look new, because
+    // there is nothing held to compare against, and the poll would fetch the
+    // whole thing again to recover the polylines it asked not to be sent.
+    if (!loadedRef.current) return
+
     // Held while this device has writes the server has not accepted yet — the
     // driver's offline queue. A poll would replace the store with an answer
     // that is knowably behind this screen, so the gate-in the driver just
@@ -122,15 +131,33 @@ export default function useLiveShipments({ onEvent, hold = false } = {}) {
     inFlightRef.current = true
 
     try {
+      // Without polylines. A route is fixed at booking and is most of the
+      // response once it is a real road, so the poll asks for everything that
+      // changes and nothing that cannot.
       const [rows, alerts] = await Promise.all([
-        listAllShipments(),
+        listAllShipments({ withRoute: false }),
         listAlerts({}).catch(() => null),
       ])
 
+      const held = shipmentsRef.current.byId
+
       dispatch({
         type: ACTIONS.SHIPMENTS_SYNC,
-        payload: { rows, flashed: changedIds(shipmentsRef.current.byId, rows) },
+        payload: { rows, flashed: changedIds(held, rows) },
       })
+
+      // A consignment this client has not seen before — booked in another
+      // portal, or newly in scope — arrived without the route it needs to be
+      // drawn, and there is nothing held to carry forward. One full read
+      // fetches every missing polyline at once. Rare by construction: it
+      // happens when a consignment appears, not on the ticks in between.
+      if (rows.some((row) => !row.route?.length && !held[row.id]?.route?.length)) {
+        const full = await listAllShipments()
+        dispatch({
+          type: ACTIONS.SHIPMENTS_SYNC,
+          payload: { rows: full, flashed: [] },
+        })
+      }
 
       if (alerts) announce(alerts)
     } catch {
@@ -173,7 +200,7 @@ export default function useLiveShipments({ onEvent, hold = false } = {}) {
       document.removeEventListener('visibilitychange', sync)
       if (timer) clearInterval(timer)
     }
-  }, [poll, dispatch, state.ui.liveEnabled, state.auth.user])
+  }, [poll, dispatch, state.ui.liveEnabled, state.auth.user, state.shipments.status])
 
   // Flashed row ids are cleared shortly after a poll so the highlight is a
   // flash rather than a permanent state.
