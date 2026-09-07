@@ -105,11 +105,37 @@ public class RoutePlanner {
                 // Deliberately broad. Anything at all going wrong out here is a
                 // reason to draw the line ourselves, never a reason to fail the
                 // booking the operator is waiting on.
-                log.warn("Routing failed ({}); falling back to a synthetic route",
-                        e.getClass().getSimpleName());
+                //
+                // The message and the root cause are logged, not just the class
+                // name. They were not, and the omission cost a diagnosis: every
+                // booking on the deployed site fell back while the box could
+                // reach the router in half a second, and all the log would say
+                // was "RestClientException" — the base class Spring throws for
+                // several unrelated reasons, naming none of them. A failure
+                // this code deliberately swallows is exactly the failure whose
+                // log line has to carry everything.
+                log.warn("Routing failed ({}: {}); root cause {}; falling back to a synthetic route",
+                        e.getClass().getSimpleName(), e.getMessage(), rootCause(e));
             }
         }
         return synthetic(origin, destination, rng);
+    }
+
+    /**
+     * The innermost cause, as "Type: message".
+     *
+     * <p>Spring wraps the thing that actually went wrong. A body it could not
+     * parse arrives as RestClientException wrapping HttpMessageNotReadableException
+     * wrapping the Jackson error that names the field; a connection that died
+     * mid-read arrives as the same outer class wrapping an IOException. The
+     * outer name distinguishes neither.
+     */
+    private static String rootCause(Throwable e) {
+        Throwable t = e;
+        while (t.getCause() != null && t.getCause() != t) {
+            t = t.getCause();
+        }
+        return t == e ? "none" : t.getClass().getSimpleName() + ": " + t.getMessage();
     }
 
     private RoutePlan requestRoute(GeoPoint origin, GeoPoint destination) {

@@ -229,6 +229,38 @@ class RoutePlannerTest {
         assertThat(plan.distanceKm()).isEqualTo(153.4);
     }
 
+    // --- the fields OSRM sends that this client does not declare ------------
+
+    @Test
+    @DisplayName("reads a response carrying the fields OSRM really sends")
+    void toleratesTheFullOsrmShape() {
+        // The real server sends waypoints, legs, weight and weight_name. None
+        // is declared on the records, and every earlier test in this class fed
+        // a stub that sent only the fields that are — so they agreed with the
+        // client's own assumption rather than testing it. Against the live
+        // service every booking failed with a bare RestClientException, which
+        // is what Spring throws when a converter cannot read a body it did
+        // receive, and fell back to the drawn curve.
+        body = """
+                {"code":"Ok",
+                 "waypoints":[
+                   {"hint":"AAA","distance":12.3,"name":"Mumbai Highway","location":[73.8567,18.5204]},
+                   {"hint":"BBB","distance":4.5,"name":"FC Approach","location":[73.0631,19.2967]}],
+                 "routes":[{
+                   "distance":153400.0,"duration":9000.0,
+                   "weight":9123.4,"weight_name":"routability",
+                   "legs":[{"distance":153400.0,"duration":9000.0,"summary":"NH48","steps":[]}],
+                   "geometry":{"type":"LineString",
+                     "coordinates":[[73.8567,18.5204],[73.5000,18.9000],[73.0631,19.2967]]}}]}
+                """;
+
+        RoutePlanner.RoutePlan plan = plan();
+
+        assertThat(plan.source()).isEqualTo(RouteSource.ROAD);
+        assertThat(plan.distanceKm()).isEqualTo(153.4);
+        assertThat(plan.points()).hasSize(3);
+    }
+
     // --- the stub's wire shape ---------------------------------------------
 
     /** An OSRM "Ok" response: metres, and GeoJSON coordinates as [lon, lat]. */
