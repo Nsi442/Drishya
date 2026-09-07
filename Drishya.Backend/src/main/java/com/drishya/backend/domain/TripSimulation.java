@@ -28,10 +28,13 @@ import lombok.Setter;
  * needs a terminal, and the whole point of a hosted demo is that it does not.
  *
  * <p><b>It walks the shipment's own route, not a GeoJSON file.</b>
- * {@code Shipment.route} is built at booking time by {@code GeoUtil.buildRoute}
- * between the vendor and the fulfilment centre, so every shipment has a
- * polyline whatever lane it was booked on. The Python simulator ships two route
- * files and silently walks the wrong geometry for any other lane; this cannot,
+ * {@code Shipment.route} is built at booking time by {@code RoutePlanner} —
+ * the real road from OSRM where it answers, and {@code GeoUtil.buildRoute}'s
+ * drawn curve where it does not — between the vendor and the fulfilment
+ * centre, so every shipment has a polyline whatever lane it was booked on.
+ * Which of the two it got makes no difference here: this walks whatever
+ * polyline the consignment carries. The Python simulator ships two route files
+ * and silently walks the wrong geometry for any other lane; this cannot,
  * because the route belongs to the consignment being simulated.
  */
 @Entity
