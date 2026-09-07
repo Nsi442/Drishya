@@ -115,10 +115,47 @@ public class EtaService {
         Shipment shipment = trip.getShipment();
         if (shipment != null) {
             shipment.setPredictedAt(dockIn);
+            applyProgress(shipment, features.remainingDistanceM());
             checkSlot(trip, shipment, prediction);
         }
 
         return Optional.of(prediction);
+    }
+
+    /**
+     * How far along the shipment says it is, from how far the engine says is left.
+     *
+     * <p><b>Why here and not on the position fix.</b> Progress along a route is
+     * a projection of a point onto a polyline, and this project does not do
+     * that arithmetic in Java — {@code FeatureBuilder} has already had PostGIS
+     * locate the vehicle on the lane, and {@code remainingDistanceM} is the
+     * answer it got. Recomputing it here from the raw fix would be a second,
+     * worse implementation of a question already answered.
+     *
+     * <p><b>Why it matters that this happens at all.</b> These two fields are
+     * what every table, progress bar and arrival board reads, and until now
+     * only the browser simulation wrote them — so the trip moved on the server
+     * while the consignment sat still, and each portal's idea of "62% covered"
+     * was its own tab's arithmetic. The engine is the one thing all three can
+     * agree with.
+     */
+    private void applyProgress(Shipment shipment, double remainingDistanceM) {
+        int distanceKm = shipment.getDistanceKm();
+        if (distanceKm <= 0) {
+            return;
+        }
+
+        double remainingKm = Math.max(0, remainingDistanceM / 1000.0);
+        // Clamped rather than trusted. The lane the engine measures against is
+        // the shared corridor, not this consignment's own route, so the two
+        // lengths differ by a few kilometres at each end and an unclamped
+        // ratio can read as 103% covered or minus four kilometres to run.
+        shipment.setRemainingKm((int) Math.round(Math.min(remainingKm, distanceKm)));
+        shipment.setProgress(clamp(1 - (remainingKm / distanceKm), 0, 1));
+    }
+
+    private static double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     /**

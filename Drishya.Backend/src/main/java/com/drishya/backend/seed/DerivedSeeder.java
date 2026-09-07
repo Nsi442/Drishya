@@ -150,6 +150,7 @@ public class DerivedSeeder {
             case ROUTE_DEVIATION -> "Route deviation";
             case DEVICE_OFFLINE -> "Tracking device offline";
             case SLOT_CHANGE -> "Dock slot changed";
+            case SLOT_REQUIRED -> "Dock slot needed";
             case ARRIVAL -> "Arrival update";
         };
     }

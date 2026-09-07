@@ -65,6 +65,7 @@ export const ACTIONS = {
   SHIPMENTS_UPSERT: 'shipments/upsert',
   SHIPMENTS_ERROR: 'shipments/error',
   SHIPMENTS_TICK: 'shipments/tick',
+  SHIPMENTS_SYNC: 'shipments/sync',
   SHIPMENTS_CLEAR_FLASH: 'shipments/clearFlash',
 
   ALERTS_LOADING: 'alerts/loading',
@@ -173,6 +174,29 @@ export function rootReducer(state, action) {
       return {
         ...state,
         shipments: { ...state.shipments, byId, lastTick: Date.now(), flashed },
+      }
+    }
+
+    // What the server says, wholesale, plus the ids that moved since the last
+    // poll so the tables can still flash a changed row.
+    //
+    // A replacement rather than a merge, deliberately. A merge would keep a row
+    // the server has stopped returning — a consignment cancelled in another
+    // portal, or one that left this caller's scope — and a stale row that
+    // nothing will ever update again is worse than a missing one.
+    case ACTIONS.SHIPMENTS_SYNC: {
+      const { rows, flashed } = action.payload
+      return {
+        ...state,
+        shipments: {
+          ...state.shipments,
+          byId: indexById(rows),
+          ids: rows.map((s) => s.id),
+          status: 'ready',
+          error: null,
+          lastTick: Date.now(),
+          flashed,
+        },
       }
     }
 

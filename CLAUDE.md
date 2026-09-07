@@ -229,11 +229,50 @@ The tick now reports position only. It was also a bulk endpoint taking ids in th
 escaped a write-path audit that probed only `/{id}/...` routes, and let any tenant stamp any
 consignment (`applied: 1`). **A bulk endpoint is still a write.**
 
+**The browser never authors state. It polls.** `useLiveShipments` used to be a simulation:
+each tab advanced its own copy of every moving consignment, recomputed its own ETA from its own
+random walk, invented its own delays and door-opens through `pushAlert`, and posted the result
+back over whatever the server had. Three people signed in meant three answers to "where is this
+lorry", all confident, none of them the platform's — and an alert one of them saw did not exist
+for the other two, because `pushAlert` only ever built an object in that tab. The hook now polls
+`/shipments/all` and `/alerts` on the same interval and dispatches what comes back.
+`commitLivePositions`, `recomputePosition`, `pushAlert` and `DELAY_REASONS` are gone with it.
+**A client that can author a position is a client that can disagree with the platform about
+where a lorry is.**
+
+**The shipment row follows the trip, and that had to be built.** The server drove the trip —
+`TripSimulationJob` moves the vehicle, ingest records the fix, the geofence reads it, the ETA
+engine predicts against it — while `Shipment.position`, `progress` and `remainingKm` were written
+by nothing on the server at all. Every table, map pin and progress bar outside `/vendor/trips`
+reads the shipment, so the two accounts drifted apart by design. `ShipmentPositionListener`
+projects the newest fix onto the consignment, and `EtaService` sets progress from the engine's
+own `remainingDistanceM`. **Two representations of one lorry will diverge unless something
+joins them.**
+
+**Two listeners on one batch, on an unversioned row.** `GeofenceListener` sets the shipment's
+status from a batch of fixes; `ShipmentPositionListener` sets where it is, from the same batch,
+on the same pool. `Shipment` has no `@Version`, so two loaded copies each write the whole row and
+the second to commit silently undoes the first — a gate-in reverted by a position from the same
+batch. `ShipmentRepository.recordPosition` is a `@Modifying` update naming four columns for
+exactly that reason, with the delivered/cancelled guard in the `WHERE` clause rather than read
+first. **A targeted update cannot clobber a column it does not mention.**
+
 **There are two map pages and they are easy to confuse.** `/vendor/live-map` ("Control tower")
-is the original, driven by the browser-side simulation in `useLiveShipments`; `/vendor/trips`
-("Live trips") is the newer one, drawn from ingested positions, real geofences and stored
-predictions. Both were reported as "the live trips page not working" while the fault was only
-ever in the first. They should be consolidated.
+is the original; `/vendor/trips` ("Live trips") is the newer one, drawn from ingested positions,
+real geofences and stored predictions. Both were reported as "the live trips page not working"
+while the fault was only ever in the first. They no longer contradict each other now the store
+is server-fed, but they are still two pages over one dataset and should be consolidated.
+
+**The platform says what it knows, an hour ahead.** Booking agrees a promised *slot* with the
+vendor; it does not book a *dock*, which is the receiving desk's decision through the appointment
+flow. Nothing asked for that decision — it relied on somebody watching the arrival board closely
+enough. `ApproachingArrivalJob` raises `SLOT_REQUIRED` when a trip is inside
+`drishya.arrival.notice-lead-min` of arriving with no settled appointment. It reads the engine's
+stored prediction, never a client's arithmetic; it refuses a prediction older than
+`FeatureBuilder.MAX_FIX_AGE`, because announcing an arrival from a fix nobody has seen in two
+hours is `StaleTripJob`'s failure broadcast to a second party who will act on it; and
+`trips.slot_request_notified_at` makes it once per journey rather than once per cycle.
+**An estimate that changes nobody's decision is not worth computing.**
 
 **Absent is not zero, in the UI as well as the API.** `formatTime`/`formatRelative` handed a
 null to `new Date(null)` — epoch 0 — and rendered "ETA 05:30 am · 20695d ago" in the same

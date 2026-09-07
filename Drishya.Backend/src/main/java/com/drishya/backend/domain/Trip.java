@@ -99,6 +99,21 @@ public class Trip {
     @Column(name = "dock_out_at")
     private Instant dockOutAt;
 
+    /**
+     * When the receiving desk was told to book a dock slot for this vehicle.
+     *
+     * <p>Set once, by {@code ApproachingArrivalJob}, and only read to decide
+     * whether to send the notice again. The condition that triggers it stays
+     * true for the whole hour before arrival, so without this the desk would
+     * hear about one lorry sixty times.
+     *
+     * <p>On the trip rather than the shipment deliberately: a consignment
+     * re-dispatched after a cancelled run is a new journey and should be
+     * announced again, and its shipment id has not changed.
+     */
+    @Column(name = "slot_request_notified_at")
+    private Instant slotRequestNotifiedAt;
+
     @OneToMany(mappedBy = "trip", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @OrderBy("at ASC")
     private List<TripEvent> events = new ArrayList<>();
