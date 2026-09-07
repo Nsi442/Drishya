@@ -4,6 +4,7 @@ import com.drishya.backend.domain.GeoPoint;
 import com.drishya.backend.domain.enums.RouteSource;
 import com.drishya.backend.seed.Rng;
 import com.sun.net.httpserver.HttpServer;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -11,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.zip.GZIPOutputStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -42,6 +44,8 @@ class RoutePlannerTest {
 
     private HttpServer server;
     private final AtomicReference<String> lastPath = new AtomicReference<>();
+    private final AtomicReference<String> lastAcceptEncoding = new AtomicReference<>();
+    private volatile boolean gzipWhenOffered = false;
     private volatile int status = 200;
     private volatile String body = "";
 
@@ -50,8 +54,23 @@ class RoutePlannerTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
             lastPath.set(exchange.getRequestURI().toString());
+            String accept = exchange.getRequestHeaders().getFirst("Accept-Encoding");
+            lastAcceptEncoding.set(accept);
+
             byte[] out = body.getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.getResponseHeaders().add("Content-Type", "application/json;charset=UTF-8");
+
+            // Compress only when the client says it can take it, which is what
+            // the real server does and the whole point of the test below.
+            if (gzipWhenOffered && accept != null && accept.contains("gzip")) {
+                ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+                try (GZIPOutputStream gz = new GZIPOutputStream(buffer)) {
+                    gz.write(out);
+                }
+                out = buffer.toByteArray();
+                exchange.getResponseHeaders().add("Content-Encoding", "gzip");
+            }
+
             exchange.sendResponseHeaders(status, out.length);
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(out);
@@ -259,6 +278,38 @@ class RoutePlannerTest {
         assertThat(plan.source()).isEqualTo(RouteSource.ROAD);
         assertThat(plan.distanceKm()).isEqualTo(153.4);
         assertThat(plan.points()).hasSize(3);
+    }
+
+    // --- compression --------------------------------------------------------
+
+    @Test
+    @DisplayName("reads the route even when the server compresses the reply")
+    void survivesAGzippedResponse() {
+        // What actually happened in production, and what nothing here caught.
+        // The public router sits behind a proxy that gzips JSON, and the reply
+        // arrived compressed: "ZipException: incorrect header check", wrapped
+        // as a bare RestClientException, so every booking silently fell back to
+        // a drawn curve while the box could reach the router in half a second.
+        //
+        // The stub compresses only when the request offers to accept it, which
+        // is exactly the condition the real server applies — so this fails if
+        // the client ever advertises an encoding it cannot then decode.
+        gzipWhenOffered = true;
+        body = ok(153_400, new double[][] {
+                {73.8567, 18.5204},
+                {73.5000, 18.9000},
+                {73.0631, 19.2967}});
+
+        RoutePlanner.RoutePlan plan = plan();
+
+        assertThat(plan.source()).isEqualTo(RouteSource.ROAD);
+        assertThat(plan.distanceKm()).isEqualTo(153.4);
+        // The guard. The stub compresses only when offered the chance, and it
+        // is never offered one — so a change that reintroduces gzip fails here
+        // rather than in a log line on a deployed box.
+        assertThat(lastAcceptEncoding.get())
+                .as("this client must not advertise an encoding it cannot reliably decode")
+                .isEqualTo("identity");
     }
 
     // --- the stub's wire shape ---------------------------------------------

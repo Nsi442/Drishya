@@ -331,6 +331,17 @@ cannot reach the API and every page loads empty, which reads as an application f
 because `preview` is the only way to see the build the deploy ships: `dev` runs React in
 StrictMode, which double-invokes every effect and so doubles any request count measured there.
 
+**The router client asks for uncompressed replies, deliberately.** Left alone, Spring's
+`RestClient` advertises `Accept-Encoding: gzip` and the public router's proxy obliges — and the
+reply then failed to inflate with `ZipException: incorrect header check`, wrapped as a bare
+`RestClientException`. Every booking on the deployed site fell back to a drawn curve while the
+same container could fetch the same URL with curl in 0.5s, and a gzipped reply decodes correctly
+against a local stub, so the fault is in how the layers hand the encoding along rather than in
+gzip. `RoutePlanner` sends `Accept-Encoding: identity` instead of diagnosing that: a route is
+tens of kilobytes fetched once per booking, and compressing it saves nothing worth a failure mode
+visible only in a log. **A fallback that is meant to be invisible needs a log line that is not.**
+The first version logged only `e.getClass().getSimpleName()` and that cost the diagnosis outright.
+
 **Absent is not zero, in the UI as well as the API.** `formatTime`/`formatRelative` handed a
 null to `new Date(null)` — epoch 0 — and rendered "ETA 05:30 am · 20695d ago" in the same
 typeface as a real arrival. `DelayPill` defaulted a missing delay to 0 and displayed a confident

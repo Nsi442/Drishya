@@ -12,6 +12,7 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -150,6 +151,24 @@ public class RoutePlanner {
 
         OsrmResponse body = client.get()
                 .uri(baseUrl + path)
+                // Ask for it uncompressed, and mean it.
+                //
+                // Left alone, this client advertises gzip and the public
+                // router's proxy obliges — and the reply then failed to
+                // inflate: "ZipException: incorrect header check", wrapped as
+                // a bare RestClientException, so every booking on the deployed
+                // site fell back to a drawn curve while the same box could
+                // fetch the same URL with curl in half a second. A gzipped
+                // reply decodes correctly in a test against a local stub, so
+                // the fault is in how the layers between here and that proxy
+                // hand the encoding along, not in gzip itself.
+                //
+                // Rather than work out which layer, stop creating the
+                // ambiguity. A route response is a few tens of kilobytes,
+                // fetched once per booking, on a link that measured 0.5s —
+                // compressing it saves nothing worth a failure mode that is
+                // invisible except in a log nobody reads.
+                .header(HttpHeaders.ACCEPT_ENCODING, "identity")
                 .retrieve()
                 .body(OsrmResponse.class);
 
