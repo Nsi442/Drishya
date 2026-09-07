@@ -7,8 +7,17 @@ export const VENDOR_NAV = [
   { to: '/vendor', label: 'Dashboard', icon: 'grid', end: true },
   { to: '/vendor/shipments', label: 'Shipments', icon: 'truck' },
   { to: '/vendor/live-map', label: 'Control tower', icon: 'map' },
-  // Recorded backend telemetry, as opposed to the browser simulation above.
-  { to: '/vendor/trips', label: 'Live trips', icon: 'navigation' },
+  // Live trips (/vendor/trips) is deliberately absent from here.
+  //
+  // Two map pages side by side in one sidebar invite the confusion this
+  // project has already had: both were once reported as "the live trips page
+  // not working" while the fault was only ever in Control tower. The route,
+  // the page, and the links to it from the Start trip card all still work —
+  // it stays reachable directly, and it is still the only view drawn from
+  // recorded backend telemetry rather than the browser simulation.
+  //
+  // Restoring it is one line:
+  //   { to: '/vendor/trips', label: 'Live trips', icon: 'navigation' },
   { to: '/vendor/appointments', label: 'Dock appointments', icon: 'calendar' },
   { section: 'Compliance' },
   { to: '/vendor/documents', label: 'Documents', icon: 'file' },
