@@ -1,245 +1,185 @@
-// The simulation that makes the product feel alive.
+// Keeps every open portal showing what the server actually believes.
 //
-// Every tick, each moving shipment advances along its polyline, its ETA is
-// recomputed from the distance still to cover, and occasionally something goes
-// wrong — a delay, a door left open, a device dropping off. Those raise a real
-// alert and a toast, so the alert feed, the arrival board and the map are all
-// describing the same event.
+// This hook used to be a simulation. Each browser advanced its own copy of
+// every moving consignment three times a second, recomputed its own ETA from
+// its own random walk, invented its own delays and door-opens, and posted the
+// result back over whatever the server had. Three people signed in meant three
+// answers to "where is this lorry", all confident, none of them the platform's
+// — and the alert one of them saw did not exist for the other two, because
+// pushAlert only ever built an object in that tab.
 //
-// Time is compressed: one real second is roughly forty simulated seconds, or
-// nothing would appear to move while somebody is looking at it.
+// The server drives now. TripSimulationJob moves the vehicle, ingest records
+// the fix, the geofence reads it, and the ETA engine predicts against it. All
+// of that happens whether anyone is looking or not, which is what makes it
+// something three portals can agree with. This polls it.
+//
+// The interval, the visibility pause and the "Live" indicator are unchanged —
+// the same machinery, doing the opposite thing: reading instead of writing.
 
 import { useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import { useAppState, useDispatch } from '../store/hooks.js'
 import { ACTIONS } from '../store/reducer.js'
-import { positionAlongRoute } from '../lib/geo.js'
-import { MOVING_STATUSES, DELAY_REASONS, ALERT_TYPES } from '../lib/constants.js'
-import { commitLivePositions } from '../services/shipmentService.js'
-import { pushAlert } from '../services/alertService.js'
+import { ALERT_SEVERITY, ALERT_TYPES } from '../lib/constants.js'
+import { listAllShipments } from '../services/shipmentService.js'
+import { listAlerts } from '../services/alertService.js'
 
-const TICK_MS = 3000
-const TIME_COMPRESSION = 40 // simulated seconds per real second
-const MIN = 60000
+// Matched to drishya.simulation.tick-ms, the rate the server moves vehicles at.
+// Polling faster than the thing being polled changes only the request count.
+const POLL_MS = 5000
 
-// Chance per tick that the whole fleet throws up one incident.
-const INCIDENT_CHANCE = 0.16
+// Fields worth flashing a row for. Deliberately not every field: updatedAt
+// alone changes on each accepted fix, and a table where every row flashes
+// every five seconds is a table nobody can read.
+const WATCHED = ['status', 'progress', 'predictedAt', 'delayMin', 'dockId', 'delayReason']
 
-function randomFrom(list) {
-  return list[Math.floor(Math.random() * list.length)]
+// Above this many at once, the toasts stop being information and start being a
+// queue to dismiss. Happens after a tab has been asleep, or on a slow first poll.
+const MAX_TOASTS_PER_POLL = 3
+
+function changedIds(previousById, rows) {
+  const flashed = []
+  rows.forEach((row) => {
+    const before = previousById[row.id]
+    if (!before) return          // new to this caller — arrival, not a change
+    if (WATCHED.some((key) => before[key] !== row[key])) flashed.push(row.id)
+  })
+  return flashed
 }
 
-export default function useLiveShipments({ onEvent } = {}) {
+export default function useLiveShipments({ onEvent, hold = false } = {}) {
   const state = useAppState()
   const dispatch = useDispatch()
 
-  // The tick reads through refs so the interval is created once and never
-  // resubscribes when a shipment moves.
+  // The poll reads through refs so the interval is created once and does not
+  // resubscribe every time a shipment moves.
   const shipmentsRef = useRef(state.shipments)
+  const alertIdsRef = useRef(null)
   const enabledRef = useRef(state.ui.liveEnabled)
+  const holdRef = useRef(hold)
+  const signedInRef = useRef(Boolean(state.auth.user))
+  const loadedRef = useRef(state.shipments.status === 'ready')
   const onEventRef = useRef(onEvent)
+  const inFlightRef = useRef(false)
 
   // Written in a layout effect rather than during render: a ref write is a side
   // effect, and this still lands before any interval callback can read it.
   useLayoutEffect(() => {
     shipmentsRef.current = state.shipments
     enabledRef.current = state.ui.liveEnabled
+    signedInRef.current = Boolean(state.auth.user)
+    loadedRef.current = state.shipments.status === 'ready'
+    holdRef.current = hold
     onEventRef.current = onEvent
   })
 
-  const tick = useCallback(() => {
-    const { byId, ids } = shipmentsRef.current
-    if (!ids.length) return
+  // Raises a toast for alerts that are new since the last poll.
+  //
+  // The first poll only records what exists; it never announces. Otherwise
+  // signing in would fire a toast for every alert already in the feed, which
+  // is both a wall of notifications and a lie about when they happened.
+  const announce = useCallback(
+    (alerts) => {
+      dispatch({ type: ACTIONS.ALERTS_SET, payload: alerts })
 
-    const elapsedSimMs = TICK_MS * TIME_COMPRESSION
-    const patches = []
-    const movers = []
+      const seen = alertIdsRef.current
+      alertIdsRef.current = new Set(alerts.map((a) => a.id))
+      if (!seen) return
 
-    ids.forEach((id) => {
-      const s = byId[id]
-      if (!s || !MOVING_STATUSES.includes(s.status)) return
-      movers.push(s)
+      alerts
+        .filter((a) => !seen.has(a.id))
+        .slice(0, MAX_TOASTS_PER_POLL)
+        .forEach((a) =>
+          onEventRef.current?.({
+            kind: a.type,
+            tone: ALERT_SEVERITY[a.severity]?.tone ?? 'info',
+            title: a.title || ALERT_TYPES[a.type] || 'Update',
+            description: a.message,
+            shipmentId: a.shipmentId,
+          }),
+        )
+    },
+    [dispatch],
+  )
 
-      // Speed wanders a little so the ETA is not a straight line.
-      const speed = Math.max(18, Math.min(78, (s.speedKmph || 45) + (Math.random() - 0.5) * 8))
-      const kmCovered = (speed * elapsedSimMs) / 3600000
-      const progress = Math.min(1, s.progress + (s.distanceKm > 0 ? kmCovered / s.distanceKm : 0.01))
-      const remainingKm = Math.max(0, Math.round(s.distanceKm * (1 - progress)))
-      const position = positionAlongRoute(s.route, progress)
+  const poll = useCallback(async () => {
+    // One request in flight at a time. On a slow connection a five-second
+    // interval would otherwise stack polls until the oldest reply overwrites
+    // the newest — the store would go backwards while the network caught up.
+    if (inFlightRef.current) return
+    // The token lives in memory only, so a poll that outruns sign-out — or
+    // starts before sign-in has finished — is a guaranteed 401 and a spurious
+    // error toast. Cheaper to not ask.
+    if (!signedInRef.current) return
 
-      // ETA from what is actually left to drive, not from the original plan.
-      const hoursLeft = remainingKm / speed
-      const predictedAt = Date.now() + hoursLeft * 3600000
-      const delayMin = Math.round((predictedAt - s.promisedAt) / MIN)
+    // Nothing to keep up to date yet. useShipmentStore owns the first read —
+    // the full one, routes included — and polling before it lands would race
+    // it with a set the store cannot merge: every row would look new, because
+    // there is nothing held to compare against, and the poll would fetch the
+    // whole thing again to recover the polylines it asked not to be sent.
+    if (!loadedRef.current) return
 
-      const patch = {
-        id: s.id,
-        progress,
-        position,
-        remainingKm,
-        speedKmph: Math.round(speed),
-        predictedAt,
-        delayMin,
-        updatedAt: Date.now(),
-      }
+    // Held while this device has writes the server has not accepted yet — the
+    // driver's offline queue. A poll would replace the store with an answer
+    // that is knowably behind this screen, so the gate-in the driver just
+    // recorded would vanish in front of them and reappear when the queue
+    // drained. The offline toggle in the driver shell is a demo switch rather
+    // than a real disconnection, so the network is usually still up and the
+    // request would succeed: being offline is not what makes this unsafe,
+    // having unsynced work is.
+    if (holdRef.current) return
 
-      // A shipment that has run out of road has arrived.
-      if (progress >= 0.995 && s.status !== 'at_gate') {
-        patch.status = 'at_gate'
-        patch.gateInAt = Date.now()
-        patch.speedKmph = 0
-        patch.events = [
-          ...s.events,
-          { stage: 'at_gate', label: 'Arrived at fulfilment centre gate', detail: 'Gate-in recorded automatically from vehicle position', at: Date.now(), done: true },
-        ]
+    inFlightRef.current = true
 
-        const alert = pushAlert({
-          type: 'arrival',
-          severity: 'info',
-          title: ALERT_TYPES.arrival,
-          message: `${s.id} has arrived at the ${s.fcName} gate and is awaiting a dock.`,
-          shipmentId: s.id,
-          vendorId: s.vendorId,
-          fcId: s.fcId,
-        })
-        dispatch({ type: ACTIONS.ALERTS_ADD, payload: alert })
-        onEventRef.current?.({
-          kind: 'arrival',
-          tone: 'success',
-          title: `${s.id} arrived at ${s.fcName}`,
-          description: 'Awaiting dock assignment',
-          shipmentId: s.id,
-        })
-      }
+    try {
+      // Without polylines. A route is fixed at booking and is most of the
+      // response once it is a real road, so the poll asks for everything that
+      // changes and nothing that cannot.
+      const [rows, alerts] = await Promise.all([
+        listAllShipments({ withRoute: false }),
+        listAlerts({}).catch(() => null),
+      ])
 
-      // The delay reason has to appear the moment the delay does, or the at-risk
-      // list shows a late shipment with nothing to explain it.
-      if (delayMin > 15 && !s.delayReason) {
-        patch.delayReason = randomFrom(DELAY_REASONS)
-      }
-      if (delayMin <= 15 && s.delayReason) {
-        patch.delayReason = null
-      }
+      const held = shipmentsRef.current.byId
 
-      patches.push(patch)
-    })
+      dispatch({
+        type: ACTIONS.SHIPMENTS_SYNC,
+        payload: { rows, flashed: changedIds(held, rows) },
+      })
 
-    if (patches.length) {
-      dispatch({ type: ACTIONS.SHIPMENTS_TICK, payload: patches })
-      // Keep the mock store in step so navigating away and back does not undo
-      // the movement the user just watched.
-      commitLivePositions(patches)
-    }
-
-    // --- occasional incidents ------------------------------------------
-    if (movers.length && Math.random() < INCIDENT_CHANCE) {
-      const s = randomFrom(movers)
-      const kind = Math.random()
-
-      if (kind < 0.45) {
-        // A delay lands as an abrupt step, the way real traffic news does.
-        const extraMin = 20 + Math.round(Math.random() * 70)
-        const reason = randomFrom(DELAY_REASONS)
-        const predictedAt = (s.predictedAt ?? s.promisedAt) + extraMin * MIN
-        const delayMin = Math.round((predictedAt - s.promisedAt) / MIN)
-
+      // A consignment this client has not seen before — booked in another
+      // portal, or newly in scope — arrived without the route it needs to be
+      // drawn, and there is nothing held to carry forward. One full read
+      // fetches every missing polyline at once. Rare by construction: it
+      // happens when a consignment appears, not on the ticks in between.
+      if (rows.some((row) => !row.route?.length && !held[row.id]?.route?.length)) {
+        const full = await listAllShipments()
         dispatch({
-          type: ACTIONS.SHIPMENTS_TICK,
-          payload: [{ id: s.id, predictedAt, delayMin, delayReason: reason, speedKmph: Math.max(8, Math.round((s.speedKmph || 40) * 0.4)) }],
-        })
-        commitLivePositions([{ id: s.id, predictedAt, delayMin, delayReason: reason }])
-
-        const alert = pushAlert({
-          type: 'delay',
-          severity: delayMin > 90 ? 'critical' : 'warning',
-          title: ALERT_TYPES.delay,
-          message: `${s.id} is running ${delayMin} min behind the promised slot at ${s.fcName}. ${reason}`,
-          shipmentId: s.id,
-          vendorId: s.vendorId,
-          fcId: s.fcId,
-        })
-        dispatch({ type: ACTIONS.ALERTS_ADD, payload: alert })
-        onEventRef.current?.({
-          kind: 'delay',
-          tone: delayMin > 90 ? 'danger' : 'warn',
-          title: `${s.id} delayed by ${extraMin} min`,
-          description: reason,
-          shipmentId: s.id,
-        })
-      } else if (kind < 0.72) {
-        const alert = pushAlert({
-          type: 'door_open',
-          severity: 'critical',
-          title: ALERT_TYPES.door_open,
-          message: `Unscheduled door open detected on ${s.vehicleReg} while in transit to ${s.fcName}.`,
-          shipmentId: s.id,
-          vendorId: s.vendorId,
-          fcId: s.fcId,
-        })
-        dispatch({ type: ACTIONS.ALERTS_ADD, payload: alert })
-
-        // Record it on the sensor panel too, so the detail page corroborates it.
-        const current = shipmentsRef.current.byId[s.id]
-        if (current) {
-          const door = [...(current.sensors?.door ?? []), { t: Date.now(), value: 1, state: 'open', durationMin: 1 + Math.round(Math.random() * 8), scheduled: false }]
-          dispatch({ type: ACTIONS.SHIPMENTS_TICK, payload: [{ id: s.id, sensors: { ...current.sensors, door }, flash: false }] })
-        }
-
-        onEventRef.current?.({
-          kind: 'door_open',
-          tone: 'danger',
-          title: `Door opened on ${s.vehicleReg}`,
-          description: `In transit to ${s.fcName} — not at a scheduled stop`,
-          shipmentId: s.id,
-        })
-      } else if (kind < 0.88) {
-        const alert = pushAlert({
-          type: 'shock',
-          severity: 'warning',
-          title: ALERT_TYPES.shock,
-          message: `Shock of ${(1.8 + Math.random() * 1.4).toFixed(1)} g recorded on ${s.vehicleReg} — inspect cartons at receiving.`,
-          shipmentId: s.id,
-          vendorId: s.vendorId,
-          fcId: s.fcId,
-        })
-        dispatch({ type: ACTIONS.ALERTS_ADD, payload: alert })
-        onEventRef.current?.({
-          kind: 'shock',
-          tone: 'warn',
-          title: `Shock event on ${s.vehicleReg}`,
-          description: 'Flag cartons for inspection at the dock',
-          shipmentId: s.id,
-        })
-      } else {
-        const alert = pushAlert({
-          type: 'device_offline',
-          severity: 'warning',
-          title: ALERT_TYPES.device_offline,
-          message: `Tracking device on ${s.vehicleReg} has not reported for 38 minutes.`,
-          shipmentId: s.id,
-          vendorId: s.vendorId,
-          fcId: s.fcId,
-        })
-        dispatch({ type: ACTIONS.ALERTS_ADD, payload: alert })
-        onEventRef.current?.({
-          kind: 'device_offline',
-          tone: 'warn',
-          title: `${s.vehicleReg} stopped reporting`,
-          description: 'Last known position held on the map',
-          shipmentId: s.id,
+          type: ACTIONS.SHIPMENTS_SYNC,
+          payload: { rows: full, flashed: [] },
         })
       }
-    }
-  }, [dispatch])
 
-  // The interval itself. Suspended whenever the tab is hidden — there is no
-  // point simulating movement nobody is watching, and it keeps a backgrounded
-  // tab from burning battery.
+      if (alerts) announce(alerts)
+    } catch {
+      // A failed poll is not an error state. The store still holds the last
+      // good answer, which is the right thing to keep showing — replacing a
+      // working board with a message about one dropped request would be worse
+      // than being five seconds stale. The next poll retries.
+    } finally {
+      inFlightRef.current = false
+    }
+  }, [dispatch, announce])
+
+  // The interval. Suspended whenever the tab is hidden — there is no point
+  // polling for a screen nobody is looking at, and it keeps a backgrounded tab
+  // off the network and off the battery.
   useEffect(() => {
     let timer = null
 
     const start = () => {
       if (timer) return
-      timer = setInterval(tick, TICK_MS)
+      poll()                                  // immediately, then on the interval
+      timer = setInterval(poll, POLL_MS)
       dispatch({ type: ACTIONS.UI_SET, payload: { livePaused: false } })
     }
 
@@ -260,9 +200,9 @@ export default function useLiveShipments({ onEvent } = {}) {
       document.removeEventListener('visibilitychange', sync)
       if (timer) clearInterval(timer)
     }
-  }, [tick, dispatch, state.ui.liveEnabled])
+  }, [poll, dispatch, state.ui.liveEnabled, state.auth.user, state.shipments.status])
 
-  // Flashed row ids are cleared shortly after a tick so the highlight is a
+  // Flashed row ids are cleared shortly after a poll so the highlight is a
   // flash rather than a permanent state.
   useEffect(() => {
     if (!state.shipments.flashed.length) return undefined

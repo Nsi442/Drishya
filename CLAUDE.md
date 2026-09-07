@@ -229,11 +229,107 @@ The tick now reports position only. It was also a bulk endpoint taking ids in th
 escaped a write-path audit that probed only `/{id}/...` routes, and let any tenant stamp any
 consignment (`applied: 1`). **A bulk endpoint is still a write.**
 
+**The browser never authors state. It polls.** `useLiveShipments` used to be a simulation:
+each tab advanced its own copy of every moving consignment, recomputed its own ETA from its own
+random walk, invented its own delays and door-opens through `pushAlert`, and posted the result
+back over whatever the server had. Three people signed in meant three answers to "where is this
+lorry", all confident, none of them the platform's — and an alert one of them saw did not exist
+for the other two, because `pushAlert` only ever built an object in that tab. The hook now polls
+`/shipments/all` and `/alerts` on the same interval and dispatches what comes back.
+`commitLivePositions`, `recomputePosition`, `pushAlert` and `DELAY_REASONS` are gone with it.
+**A client that can author a position is a client that can disagree with the platform about
+where a lorry is.**
+
+**The shipment row follows the trip, and that had to be built.** The server drove the trip —
+`TripSimulationJob` moves the vehicle, ingest records the fix, the geofence reads it, the ETA
+engine predicts against it — while `Shipment.position`, `progress` and `remainingKm` were written
+by nothing on the server at all. Every table, map pin and progress bar outside `/vendor/trips`
+reads the shipment, so the two accounts drifted apart by design. `ShipmentPositionListener`
+projects the newest fix onto the consignment, and `EtaService` sets progress from the engine's
+own `remainingDistanceM`. **Two representations of one lorry will diverge unless something
+joins them.**
+
+**Two listeners on one batch, on an unversioned row.** `GeofenceListener` sets the shipment's
+status from a batch of fixes; `ShipmentPositionListener` sets where it is, from the same batch,
+on the same pool. `Shipment` has no `@Version`, so two loaded copies each write the whole row and
+the second to commit silently undoes the first — a gate-in reverted by a position from the same
+batch. `ShipmentRepository.recordPosition` is a `@Modifying` update naming four columns for
+exactly that reason, with the delivered/cancelled guard in the `WHERE` clause rather than read
+first. **A targeted update cannot clobber a column it does not mention.**
+
 **There are two map pages and they are easy to confuse.** `/vendor/live-map` ("Control tower")
-is the original, driven by the browser-side simulation in `useLiveShipments`; `/vendor/trips`
-("Live trips") is the newer one, drawn from ingested positions, real geofences and stored
-predictions. Both were reported as "the live trips page not working" while the fault was only
-ever in the first. They should be consolidated.
+is the original; `/vendor/trips` ("Live trips") is the newer one, drawn from ingested positions,
+real geofences and stored predictions. Both were reported as "the live trips page not working"
+while the fault was only ever in the first. They no longer contradict each other now the store
+is server-fed, but they are still two pages over one dataset and should be consolidated.
+
+**The platform says what it knows, an hour ahead.** Booking agrees a promised *slot* with the
+vendor; it does not book a *dock*, which is the receiving desk's decision through the appointment
+flow. Nothing asked for that decision — it relied on somebody watching the arrival board closely
+enough. `ApproachingArrivalJob` raises `SLOT_REQUIRED` when a trip is inside
+`drishya.arrival.notice-lead-min` of arriving with no settled appointment. It reads the engine's
+stored prediction, never a client's arithmetic; it refuses a prediction older than
+`FeatureBuilder.MAX_FIX_AGE`, because announcing an arrival from a fix nobody has seen in two
+hours is `StaleTripJob`'s failure broadcast to a second party who will act on it; and
+`trips.slot_request_notified_at` makes it once per journey rather than once per cycle.
+**An estimate that changes nobody's decision is not worth computing.**
+
+**It measures travel, not dock-in, and that distinction was found by running it.** The engine
+predicts when a vehicle reaches a *bay* — travel plus the queue it expects in the yard. Keying
+the notice on that was circular: the queue is long precisely because no dock is booked, so the
+figure stayed above the hour while the vehicle drove the last stretch. On a real run, travel fell
+90 → 68 → 45 → 23 → 1 minutes while the total never dropped below 93. Subtracting
+`predictedQueueMinutes` leaves the thing both parties mean by "an hour away".
+
+**The engine reasons in real time; the simulator does not.** `TripSimulationService` compresses
+time by `timeScale`, but the ETA engine predicts real-world minutes from lane history (~34 km/h
+on the seeded lanes). At `timeScale=10` a vehicle covers the last 50 km in four real minutes
+while the engine still believes it is ninety minutes out, so an arrival notice keyed on predicted
+time barely fires, or does not. Nothing is wrong with either component. For a demo that must show
+the notice, either drive at a low `timeScale` or raise `ARRIVAL_NOTICE_LEAD_MIN` to match the
+compression.
+
+**An enum constrained in the schema is a THREE-file change.** The two-file rule above covers
+the browser contract. It is not the whole contract: Hibernate persists these enums by NAME, and
+`alerts.type`, `positions.source` and `shipments.route_source` each carry a CHECK constraint
+listing the names the table accepts. Adding `AlertType.SLOT_REQUIRED` to the Java enum and to
+`constants.js` compiled, started, and passed every test — then failed at the moment the feature
+first did its job, because `alerts_type_check` had never heard of it. Java enum, frontend
+vocabulary, **and a migration.**
+
+**A try/catch inside `@Transactional` is not error handling.** `ApproachingArrivalJob` looped
+over every active trip with `@Transactional` on the method and a catch per trip, which reads as
+"one bad trip must not stop the others" and did the opposite: the first failed insert marked the
+transaction rollback-only, every later trip died with "current transaction is aborted", and the
+swallowed exceptions let the job log that it had **notified the receiving desk when it had
+notified nobody** — the counted row was rolled back with the rest. A per-item boundary
+(`TransactionTemplate`, as `RouteBackfillService` uses) is what makes the catch mean what it
+says. Re-read the entity inside its own transaction: the one from the listing is detached, and
+writing to it updates nothing.
+
+**Splitting a `@Transactional` method leaves the annotation behind.** Adding a `withRoute`
+overload to `ShipmentService.listAll` moved the body to a new arity and left
+`@Transactional(readOnly = true)` on the old one. Both are called directly by the controller, and
+Spring's advice lives in a proxy an in-class call never crosses — so the new method ran with no
+session and `Mapper` threw `LazyInitializationException` on its first lazy hop
+(`vehicle.getCarrier()`), turning the endpoint every portal polls into a 500. It compiled, and
+nothing short of calling the endpoint would have found it. **Annotate every arity that is an
+entry point.**
+
+**The poll asks for everything that changes and nothing that cannot.** A route is fixed at
+booking and, once it is a real road, several hundred points — most of the response. Measured on
+the receiving desk's feed with real routes: 102.6 KB a poll with them, 20.3 KB without.
+`/api/shipments/all?withRoute=false` omits them, `SHIPMENTS_SYNC` carries the held route forward,
+and an empty route on the wire means "unchanged, you already have it" rather than "no route".
+A consignment genuinely new to the client has nothing held, so the hook does one full read to
+recover the missing polylines — which is why the poll must not run before `useShipmentStore`'s
+first load lands: with an empty store every row looks new and the recovery fetches the whole set
+a second time on every sign-in.
+
+**`vite preview` does not inherit `server.proxy`.** Without `preview.proxy` the production build
+cannot reach the API and every page loads empty, which reads as an application fault. It matters
+because `preview` is the only way to see the build the deploy ships: `dev` runs React in
+StrictMode, which double-invokes every effect and so doubles any request count measured there.
 
 **Absent is not zero, in the UI as well as the API.** `formatTime`/`formatRelative` handed a
 null to `new Date(null)` — epoch 0 — and rendered "ETA 05:30 am · 20695d ago" in the same

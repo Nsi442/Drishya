@@ -1,5 +1,4 @@
 import { get, post, patch } from './client.js'
-import { nextId } from '../lib/id.js'
 
 export function listAlerts({ severity = 'all', read = 'all', search = '', shipmentId } = {}) {
   return get('/alerts', {
@@ -23,26 +22,13 @@ export function acknowledgeAlert(id, by) {
   return post(`/alerts/${id}/acknowledge`, { by }, { label: 'acknowledging the alert' })
 }
 
-/**
- * Builds an alert for something the live simulation just invented.
- *
- * <p>Client-side only, and deliberately so. The simulation is a stand-in for
- * telemetry the backend does not yet receive, so its alerts are simulated too —
- * they appear immediately and do not survive a reload. Alerts the backend
- * raises for itself (an incident report, a short goods receipt) are persisted
- * and do come back from {@link listAlerts}.
- */
-export function pushAlert(alert) {
-  return {
-    id: nextId('ALT'),
-    read: false,
-    acknowledged: false,
-    acknowledgedBy: null,
-    at: Date.now(),
-    simulated: true,
-    ...alert,
-  }
-}
+// pushAlert is gone with the simulation that needed it.
+//
+// It fabricated an alert object in the browser and never told anyone. An alert
+// raised in the vendor's tab therefore did not exist in the receiving desk's,
+// which made the feed the one place in the product where two people looking at
+// the same consignment were guaranteed to disagree. Alerts are the backend's
+// to raise; this module only reads them.
 
 export function listExceptions({ status = 'all', type = 'all', fcId, search = '' } = {}) {
   return get('/exceptions', {

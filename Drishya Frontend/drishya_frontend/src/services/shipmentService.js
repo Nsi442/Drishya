@@ -1,5 +1,4 @@
 import { get, post, patch } from './client.js'
-import { positionAlongRoute } from '../lib/geo.js'
 
 export function listShipments({ filters = {}, sort = {}, page = 1, pageSize = 25 } = {}) {
   return get('/shipments', {
@@ -22,6 +21,15 @@ export function listShipments({ filters = {}, sort = {}, page = 1, pageSize = 25
 }
 
 /** Unpaginated — for maps, boards and the live tick. */
+/**
+ * The whole visible set.
+ *
+ * `withRoute: false` asks the server to leave the polylines out. Use it for the
+ * poll, which re-reads this set every few seconds and already holds every route
+ * it has seen — a route is fixed at booking, and once it is a real road it is
+ * several hundred points and most of the response. The store carries the held
+ * route forward; see SHIPMENTS_SYNC.
+ */
 export function listAllShipments(filters = {}) {
   return get('/shipments/all', {
     label: 'loading shipments',
@@ -30,6 +38,7 @@ export function listAllShipments(filters = {}) {
       status: filters.status,
       fcId: filters.fcId,
       vendorId: filters.vendorId,
+      withRoute: filters.withRoute === false ? 'false' : undefined,
       delayedOnly: filters.delayedOnly ? 'true' : undefined,
     },
   })
@@ -139,36 +148,15 @@ export function reportIncident(payload) {
   )
 }
 
-/**
- * Positions from the live simulation, sent as one batch per tick.
- *
- * <p>Fire-and-forget on purpose: the store has already been updated optimistically,
- * so the map keeps moving whether or not this round trip lands. A failure here
- * costs nothing more than the next tick overwriting it.
- */
-export function commitLivePositions(updates) {
-  if (!updates.length) return Promise.resolve(null)
-
-  const payload = updates
-    .filter((u) => u.position)
-    .map((u) => ({
-      id: u.id,
-      progress: u.progress ?? 0,
-      lat: u.position.lat,
-      lng: u.position.lng,
-      remainingKm: u.remainingKm ?? 0,
-      speedKmph: u.speedKmph ?? 0,
-      predictedAt: u.predictedAt ?? null,
-      delayMin: u.delayMin ?? null,
-      delayReason: u.delayReason ?? null,
-    }))
-
-  if (!payload.length) return Promise.resolve(null)
-
-  return post('/shipments/live', payload, { label: 'syncing positions' }).catch(() => null)
-}
-
-/** Pure client-side helper used by the simulation; no request involved. */
-export function recomputePosition(shipment, progress) {
-  return positionAlongRoute(shipment.route, progress)
-}
+// Nothing here posts positions any more.
+//
+// commitLivePositions and recomputePosition lived here to serve the browser
+// simulation, and both are gone with it. Where a vehicle is, and how far along
+// its route that puts it, are now written by the server alone — from ingested
+// fixes and the ETA engine's own measurement — and read back by polling.
+//
+// The endpoint they called, POST /api/shipments/live, still exists for
+// telemetry arriving from outside the browser. It is deliberately not called
+// from here: a client that can author a position is a client that can disagree
+// with the platform about where a lorry is, which is the whole fault this
+// replaced.

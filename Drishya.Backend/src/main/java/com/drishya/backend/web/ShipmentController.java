@@ -55,7 +55,16 @@ public class ShipmentController {
         return shipmentService.list(callers.resolve(userId), filter, sort, direction, page, pageSize);
     }
 
-    /** Unpaginated — the map, the control tower and the live tick all need the set. */
+    /**
+     * Unpaginated — the map, the control tower and the live poll all need the set.
+     *
+     * <p>{@code withRoute=false} drops every polyline from the response. The
+     * browser polls this endpoint to stay in step with the server, and a route
+     * does not change after booking, so re-sending several hundred points per
+     * consignment every few seconds is the one thing here that costs real
+     * money on a t3.micro. Defaults to true: a caller that does not ask still
+     * gets the whole consignment.
+     */
     @GetMapping("/all")
     public List<ShipmentDto> listAll(
             @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId,
@@ -63,11 +72,12 @@ public class ShipmentController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String fcId,
             @RequestParam(required = false) String vendorId,
-            @RequestParam(required = false) Boolean delayedOnly) {
+            @RequestParam(required = false) Boolean delayedOnly,
+            @RequestParam(defaultValue = "true") boolean withRoute) {
 
         var filter = new ShipmentService.ShipmentFilter(
                 search, status, fcId, vendorId, null, null, delayedOnly, null);
-        return shipmentService.listAll(callers.resolve(userId), filter);
+        return shipmentService.listAll(callers.resolve(userId), filter, withRoute);
     }
 
     @GetMapping("/{id}")

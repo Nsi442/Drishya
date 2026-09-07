@@ -8,6 +8,7 @@ import java.util.Optional;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -57,6 +58,41 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
     @Query("select s.id from Shipment s where s.routeSource = "
             + "com.drishya.backend.domain.enums.RouteSource.SYNTHETIC order by s.id")
     List<String> findIdsWithSyntheticRoute(Pageable page);
+
+    /**
+     * Writes only where a consignment is, and only if it is still running.
+     *
+     * <p><b>A targeted update rather than a loaded entity, and that is the
+     * point.</b> Two listeners react to the same batch of fixes on the same
+     * thread pool: {@code GeofenceListener} sets the shipment's status when the
+     * vehicle crosses the fence, and {@code ShipmentPositionListener} sets
+     * where it is. Shipment carries no {@code @Version}, so two loaded copies
+     * would each write the whole row back and whichever committed second would
+     * silently undo the other's field — a gate-in reverted by a position, or a
+     * position reverted by a gate-in, with nothing anywhere to say so.
+     *
+     * <p>Naming the four columns makes that impossible: this statement cannot
+     * touch a column it does not mention, whatever else is happening to the row.
+     *
+     * <p>The status guard is in the WHERE clause for the same reason. Read as
+     * a separate query it would be a check-then-act with a window in between,
+     * and a fix buffered through a dead zone can arrive after the consignment
+     * was cancelled.
+     *
+     * <p>{@code speedKmph} is coalesced rather than defaulted. A fix that
+     * carries no speed is a fix that did not measure one, and writing zero for
+     * it would render a moving lorry as stopped — the same absent-is-not-zero
+     * mistake that had DelayPill reporting "On time" for a vehicle nobody
+     * could find. The last measured speed stands until something measures
+     * another.
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("update Shipment s set s.position.lat = :lat, s.position.lng = :lng, "
+            + "s.speedKmph = coalesce(:speedKmph, s.speedKmph), s.updatedAt = :at "
+            + "where s.id = :id and s.status <> com.drishya.backend.domain.enums.ShipmentStatus.DELIVERED "
+            + "and s.status <> com.drishya.backend.domain.enums.ShipmentStatus.CANCELLED")
+    int recordPosition(@Param("id") String id, @Param("lat") double lat, @Param("lng") double lng,
+                       @Param("speedKmph") Integer speedKmph, @Param("at") Instant at);
 
     /** Drives the live tick: only what is actually on the road. */
     @EntityGraph(attributePaths = {"vendor", "fulfilmentCentre", "vehicle", "driver"})

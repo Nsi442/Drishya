@@ -20,6 +20,14 @@ public enum AlertType {
     ROUTE_DEVIATION("route_deviation"),
     DEVICE_OFFLINE("device_offline"),
     SLOT_CHANGE("slot_change"),
+
+    /**
+     * A vehicle is close enough that the receiving desk needs a dock slot for
+     * it. Distinct from SLOT_CHANGE, which is about a slot that already exists:
+     * this one says there is none yet and the lorry is nearly here.
+     */
+    SLOT_REQUIRED("slot_required"),
+
     ARRIVAL("arrival");
 
     private final String wire;

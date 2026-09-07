@@ -65,6 +65,7 @@ export const ACTIONS = {
   SHIPMENTS_UPSERT: 'shipments/upsert',
   SHIPMENTS_ERROR: 'shipments/error',
   SHIPMENTS_TICK: 'shipments/tick',
+  SHIPMENTS_SYNC: 'shipments/sync',
   SHIPMENTS_CLEAR_FLASH: 'shipments/clearFlash',
 
   ALERTS_LOADING: 'alerts/loading',
@@ -173,6 +174,45 @@ export function rootReducer(state, action) {
       return {
         ...state,
         shipments: { ...state.shipments, byId, lastTick: Date.now(), flashed },
+      }
+    }
+
+    // What the server says, wholesale, plus the ids that moved since the last
+    // poll so the tables can still flash a changed row.
+    //
+    // A replacement rather than a merge, deliberately. A merge would keep a row
+    // the server has stopped returning — a consignment cancelled in another
+    // portal, or one that left this caller's scope — and a stale row that
+    // nothing will ever update again is worse than a missing one.
+    case ACTIONS.SHIPMENTS_SYNC: {
+      const { rows, flashed } = action.payload
+
+      // The poll asks for these without their polylines, so carry forward the
+      // one already held. A route is fixed at booking and several hundred
+      // points long once it is a real road, which makes it the single largest
+      // thing in the response and the only part of it that never changes.
+      //
+      // An empty array from the server therefore means "unchanged, ask the
+      // detail view", not "this consignment has no route". A row genuinely new
+      // to this client has no previous route to carry, and the hook notices
+      // that and refetches in full rather than leaving a line off the map.
+      const merged = rows.map((row) => {
+        if (row.route?.length) return row
+        const held = state.shipments.byId[row.id]?.route
+        return held?.length ? { ...row, route: held } : row
+      })
+
+      return {
+        ...state,
+        shipments: {
+          ...state.shipments,
+          byId: indexById(merged),
+          ids: merged.map((s) => s.id),
+          status: 'ready',
+          error: null,
+          lastTick: Date.now(),
+          flashed,
+        },
       }
     }
 

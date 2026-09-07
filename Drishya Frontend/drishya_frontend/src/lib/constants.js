@@ -121,6 +121,7 @@ export const ALERT_TYPES = {
   route_deviation: 'Route deviation',
   device_offline: 'Tracking device offline',
   slot_change: 'Dock slot changed',
+  slot_required: 'Dock slot needed',
   arrival: 'Arrival update',
 }
 
@@ -147,16 +148,10 @@ export const EXCEPTION_STATUS = {
   resolved: { label: 'Resolved', tone: 'success' },
 }
 
-export const DELAY_REASONS = [
-  'Traffic congestion on NH-48',
-  'Extended loading at origin',
-  'Driver rest break',
-  'Toll plaza queue',
-  'Weather — heavy rain',
-  'Route diversion',
-  'Vehicle breakdown',
-  'Waiting for dock assignment',
-]
+// DELAY_REASONS used to live here: a list the browser simulation picked from
+// to invent a cause for a delay it had also invented. Both are gone. A delay
+// reason is written by the backend — by the seeder, or by StaleTripJob saying
+// in words that it has lost the vehicle — and rendered as the text it is.
 
 export const INCIDENT_TYPES = {
   breakdown: 'Vehicle breakdown',

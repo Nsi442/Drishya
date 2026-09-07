@@ -80,6 +80,19 @@ Parameters:
       absent — which signs every user out on every restart and deploy. Generate
       one: openssl rand -base64 48
 
+  InternalServiceToken:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: >-
+      Guards /api/v1/internal/* — the training-data export and the route
+      backfill. Both are cross-tenant by nature, so no bearer token can
+      legitimately reach them and a separate service token stands in for the
+      tenancy check that cannot apply. LEAVING THIS EMPTY IS SAFE AND IS THE
+      DEFAULT: the endpoints then 404 for everyone, including you, which is
+      fail-closed rather than broken. Set it when you need to run the route
+      backfill against deployed data. Generate one: openssl rand -base64 32
+
   SshCidr:
     Type: String
     Default: ""
@@ -436,6 +449,23 @@ Resources:
           PORT=8080
           ETA_CYCLE_MS=60000
           DB_POOL_SIZE=5
+
+          # Empty by default, and that is fail-closed: InternalServiceToken
+          # unset means /api/v1/internal/* 404s for everyone rather than
+          # opening. A blank configured token is never satisfiable by a blank
+          # header — see InternalServiceToken.java.
+          INTERNAL_SERVICE_TOKEN=${InternalServiceToken}
+
+          # Real road geometry from OSRM's public demo server, asked once per
+          # booking and stored. Every failure falls back to the drawn curve, so
+          # a booking never depends on a third party being awake. Set
+          # ROUTING_ENABLED=false to force the curve everywhere.
+          ROUTING_ENABLED=true
+          ROUTING_BASE_URL=https://router.project-osrm.org
+
+          # How long before arrival the receiving desk is asked to book a dock.
+          # Sixty minutes of TRAVEL, queue excluded — see ApproachingArrivalJob.
+          ARRIVAL_NOTICE_LEAD_MIN=60
           ENV
 
           API_IMAGE="$REGISTRY/${ApiRepository}:${ApiImageTag}"

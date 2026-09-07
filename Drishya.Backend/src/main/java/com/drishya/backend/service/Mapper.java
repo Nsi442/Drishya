@@ -67,6 +67,25 @@ public class Mapper {
      *     telemetry would multiply the payload for columns nothing renders.
      */
     public ShipmentDto toDto(Shipment s, boolean includeChildren) {
+        return toDto(s, includeChildren, true);
+    }
+
+    /**
+     * @param includeRoute false to send the consignment without its polyline.
+     *
+     *     <p>The same reasoning as {@code includeChildren}, one notch up, and
+     *     it became load-bearing when two changes met. A drawn route was three
+     *     points; a real road from OSRM is up to four hundred, so the route
+     *     went from a rounding error to most of the response — and the browser
+     *     now re-reads the whole set every few seconds to stay in step with the
+     *     server. Measured on the receiving desk's feed: 29 KB a poll today,
+     *     272 KB once the routes are real, on a t3.micro, per open portal.
+     *
+     *     <p>What makes omitting it safe is that a route never changes after
+     *     booking. The client keeps the one it already has, so the only thing
+     *     re-sending it buys is the bytes.
+     */
+    public ShipmentDto toDto(Shipment s, boolean includeChildren, boolean includeRoute) {
         Vehicle vehicle = s.getVehicle();
         Driver driver = s.getDriver();
         Vendor vendor = s.getVendor();
@@ -91,7 +110,7 @@ public class Mapper {
                 lane(s),
                 place(s.getOrigin()),
                 place(s.getDestination()),
-                s.getRoute().stream().map(Mapper::point).toList(),
+                includeRoute ? s.getRoute().stream().map(Mapper::point).toList() : List.of(),
                 s.getRouteSource(),
                 point(s.getPosition()),
                 s.getProgress(),

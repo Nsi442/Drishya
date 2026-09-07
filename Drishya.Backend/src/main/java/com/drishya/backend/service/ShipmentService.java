@@ -116,9 +116,30 @@ public class ShipmentService {
     /** Unpaginated — for maps, boards and the live tick. Same boundary. */
     @Transactional(readOnly = true)
     public List<ShipmentDto> listAll(CallerService.Caller caller, ShipmentFilter filter) {
+        return listAll(caller, filter, true);
+    }
+
+    /**
+     * @param includeRoute false for the browser's poll, which re-reads this set
+     *     every few seconds and already holds every polyline it needs. See
+     *     {@code Mapper.toDto(Shipment, boolean, boolean)}.
+     *
+     *     <p><b>Annotated in its own right, not by the overload above.</b> Both
+     *     are entry points the controller calls directly, and Spring's
+     *     transaction advice lives in a proxy that an in-class call never
+     *     crosses — so an annotation on one does nothing for the other. Left
+     *     off, this method ran with no session at all and the mapper threw
+     *     LazyInitializationException on the first lazy hop it took
+     *     ({@code vehicle.getCarrier()}), turning the endpoint every portal
+     *     polls into a 500. It compiled, and no test that stops at the service
+     *     would have caught it.
+     */
+    @Transactional(readOnly = true)
+    public List<ShipmentDto> listAll(CallerService.Caller caller, ShipmentFilter filter,
+                                     boolean includeRoute) {
         return scopedFor(caller).stream()
                 .filter(filter::matches)
-                .map(s -> mapper.toDto(s, false))
+                .map(s -> mapper.toDto(s, false, includeRoute))
                 .sorted(Comparator.comparing(ShipmentDto::promisedAt,
                         Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList();
