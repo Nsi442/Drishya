@@ -4,6 +4,7 @@ import com.drishya.backend.domain.enums.DocumentStatus;
 import com.drishya.backend.domain.enums.DocumentType;
 import com.drishya.backend.domain.enums.GrnDecision;
 import com.drishya.backend.domain.enums.Priority;
+import com.drishya.backend.domain.enums.RouteSource;
 import com.drishya.backend.domain.enums.ShipmentStatus;
 import java.util.List;
 
@@ -45,6 +46,16 @@ public record ShipmentDto(
         Place origin,
         Place destination,
         List<Point> route,
+
+        /**
+         * Whether {@code route} and {@code distanceKm} were measured along a
+         * road or drawn between two points.
+         *
+         * <p>Sent because the two are otherwise identical on the wire, and a
+         * drawn distance presented as a road one is exactly the confident-but-
+         * wrong number this project keeps guarding against.
+         */
+        RouteSource routeSource,
         Point position,
         double progress,
         int distanceKm,

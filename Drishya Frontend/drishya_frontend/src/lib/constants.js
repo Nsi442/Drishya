@@ -172,6 +172,21 @@ export const DEVICE_STATUS = {
   'low-battery': { label: 'Low battery', tone: 'warn' },
 }
 
+// Where a consignment's route and distance came from. Wire values match
+// domain/enums/RouteSource.java.
+//
+// A drawn curve and a real road fill the same two fields, and one of them is a
+// measurement while the other is a guess — a 128 km line reads exactly like a
+// 128 km road unless something says otherwise. This is what says otherwise.
+//
+// Deliberately worded as a property of the number rather than as a fault.
+// SYNTHETIC is not a broken state: it is what every consignment booked before
+// routing existed has, and what any offline booking falls back to.
+export const ROUTE_SOURCE = {
+  road: { label: 'Measured along the road', short: 'road distance', tone: 'neutral' },
+  synthetic: { label: 'Estimated in a straight line', short: 'estimated', tone: 'warn' },
+}
+
 export const GRN_DECISION = {
   accepted: { label: 'Accepted', tone: 'success' },
   partial: { label: 'Partially accepted', tone: 'warn' },

@@ -5,6 +5,7 @@ import com.drishya.backend.domain.enums.ShipmentStatus;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -41,6 +42,21 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
 
     @EntityGraph(attributePaths = {"vendor", "fulfilmentCentre", "vehicle", "driver"})
     List<Shipment> findByStatusIn(List<ShipmentStatus> statuses);
+
+    /**
+     * Ids of consignments whose route was drawn rather than measured.
+     *
+     * <p>Ids, not entities, and deliberately. The backfill re-routes them one
+     * at a time with a network call in between, so holding a list of loaded
+     * entities — or worse, one transaction — across all of that is exactly the
+     * shape that turns a maintenance job into a lock contention problem.
+     *
+     * <p>Cross-tenant on purpose: this is an operator's job, reachable only
+     * behind the service token, never through a vendor's session.
+     */
+    @Query("select s.id from Shipment s where s.routeSource = "
+            + "com.drishya.backend.domain.enums.RouteSource.SYNTHETIC order by s.id")
+    List<String> findIdsWithSyntheticRoute(Pageable page);
 
     /** Drives the live tick: only what is actually on the road. */
     @EntityGraph(attributePaths = {"vendor", "fulfilmentCentre", "vehicle", "driver"})

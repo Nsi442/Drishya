@@ -1,7 +1,6 @@
 package com.drishya.backend.web;
 
 import com.drishya.backend.service.eta.TrainingDataService;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -9,7 +8,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import com.drishya.backend.service.ApiException;
 
 /**
  * Exports scored predictions as CSV, for training.
@@ -32,25 +30,18 @@ import com.drishya.backend.service.ApiException;
 public class InternalTrainingController {
 
     private final TrainingDataService training;
-    private final String serviceToken;
+    private final InternalServiceToken gate;
 
-    public InternalTrainingController(
-            TrainingDataService training,
-            @Value("${drishya.internal.service-token:}") String serviceToken) {
+    public InternalTrainingController(TrainingDataService training, InternalServiceToken gate) {
         this.training = training;
-        this.serviceToken = serviceToken;
+        this.gate = gate;
     }
 
     @GetMapping(value = "/training-data", produces = "text/csv")
     public ResponseEntity<String> trainingData(
             @RequestHeader(value = "X-Service-Token", required = false) String presented) {
 
-        // Unset means unavailable, not open. A blank configured token must never
-        // be satisfiable by a blank header — that is how an internal endpoint
-        // ends up open in the one environment nobody set the variable in.
-        if (serviceToken.isBlank() || !serviceToken.equals(presented)) {
-            throw ApiException.notFound("No such endpoint.");
-        }
+        gate.require(presented);
 
         String csv = training.exportCsv();
         return ResponseEntity.ok()

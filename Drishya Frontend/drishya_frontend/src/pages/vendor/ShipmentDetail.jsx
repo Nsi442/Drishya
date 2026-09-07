@@ -30,6 +30,7 @@ import {
   ConsignmentSummary,
   DocumentStrip,
   PODPanel,
+  RouteSourceTag,
   ShipmentBreadcrumb,
 } from '../../components/shipment/ShipmentParts.jsx'
 
@@ -204,7 +205,15 @@ export default function ShipmentDetail() {
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1.6fr) minmax(0, 1fr)', alignItems: 'start' }}>
         <div className="stack gap-16">
           <Card>
-            <CardHeader title="Live position" subtitle={`${formatNumber(shipment.remainingKm)} km remaining of ${formatNumber(shipment.distanceKm)} km`} />
+            {/* The tag belongs on the map card, not only in the summary
+                below: a drawn curve and a routed road are drawn with the same
+                stroke, so this is the one place on the page where the two are
+                impossible to tell apart by looking. */}
+            <CardHeader
+              title="Live position"
+              subtitle={`${formatNumber(shipment.remainingKm)} km remaining of ${formatNumber(shipment.distanceKm)} km`}
+              actions={<RouteSourceTag source={shipment.routeSource} />}
+            />
             <CardBody flush>
               <ShipmentMap
                 shipments={[shipment]}

@@ -26,6 +26,7 @@ import com.drishya.backend.repo.ShipmentRepository;
 import com.drishya.backend.repo.VehicleRepository;
 import com.drishya.backend.repo.VendorRepository;
 import com.drishya.backend.seed.GeoUtil;
+import com.drishya.backend.service.routing.RoutePlanner;
 import com.drishya.backend.seed.Rng;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -49,11 +50,13 @@ public class ShipmentService {
     private final IncidentRepository incidents;
     private final AlertService alertService;
     private final Mapper mapper;
+    private final RoutePlanner routePlanner;
 
     public ShipmentService(ShipmentRepository shipments, VendorRepository vendors,
                            FulfilmentCentreRepository centres, VehicleRepository vehicles,
                            DriverRepository drivers, IncidentRepository incidents,
-                           AlertService alertService, Mapper mapper) {
+                           AlertService alertService, Mapper mapper,
+                           RoutePlanner routePlanner) {
         this.shipments = shipments;
         this.vendors = vendors;
         this.centres = centres;
@@ -62,6 +65,7 @@ public class ShipmentService {
         this.incidents = incidents;
         this.alertService = alertService;
         this.mapper = mapper;
+        this.routePlanner = routePlanner;
     }
 
     // --- reads -----------------------------------------------------------
@@ -188,8 +192,13 @@ public class ShipmentService {
 
         GeoPoint originPoint = new GeoPoint(vendor.getLocation().getLat(), vendor.getLocation().getLng());
         GeoPoint destPoint = new GeoPoint(fc.getLocation().getLat(), fc.getLocation().getLng());
-        List<GeoPoint> route = GeoUtil.buildRoute(originPoint, destPoint, rng);
-        int distanceKm = (int) Math.round(GeoUtil.routeLength(route));
+        // The road, when the router answers; the drawn curve when it does not.
+        // Both the geometry and the distance come from the same plan, because a
+        // road distance beside a straight-line polyline is a consignment that
+        // disagrees with itself.
+        RoutePlanner.RoutePlan plan = routePlanner.plan(originPoint, destPoint, rng);
+        List<GeoPoint> route = plan.points();
+        int distanceKm = (int) Math.round(plan.distanceKm());
 
         Instant promisedAt = request.slotStart() != null
                 ? Instant.ofEpochMilli(request.slotStart())
@@ -209,6 +218,9 @@ public class ShipmentService {
                 vendor.getName() + " — " + vendor.getCity()));
         s.setDestination(new Place(destPoint.getLat(), destPoint.getLng(), fc.getName()));
         s.setRoute(route);
+        // Recorded beside the route it describes, so a drawn distance can never
+        // be mistaken for a measured one further downstream.
+        s.setRouteSource(plan.source());
         s.setProgress(0);
         s.setPosition(originPoint);
         s.setDistanceKm(distanceKm);

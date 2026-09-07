@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { DOC_TYPES } from '../../lib/constants.js'
+import { DOC_TYPES, ROUTE_SOURCE } from '../../lib/constants.js'
 import { formatDateTime, formatTime, formatRelative, formatNumber, formatCurrency } from '../../lib/format.js'
 import { StatusPill, DelayPill } from '../ui/Badge.jsx'
 import Badge from '../ui/Badge.jsx'
@@ -116,8 +116,32 @@ export function ConsignmentSummary({ shipment }) {
       <dt>Lane</dt>
       <dd>{shipment.lane}</dd>
       <dt>Distance</dt>
-      <dd>{formatNumber(shipment.distanceKm)} km</dd>
+      <dd className="row gap-8">
+        {formatNumber(shipment.distanceKm)} km
+        <RouteSourceTag source={shipment.routeSource} />
+      </dd>
     </dl>
+  )
+}
+
+// Says whether a distance was measured or drawn.
+//
+// The two are stored in the same field and render as the same kind of number,
+// so on screen a straight-line estimate is indistinguishable from a routed
+// road — and it is the number the ETA engine works from. Nothing else on the
+// page can tell them apart, so this has to.
+//
+// Renders nothing when the field is absent rather than guessing at one: an
+// older response that predates route provenance genuinely does not say, and
+// captioning it either way would be inventing the answer.
+export function RouteSourceTag({ source }) {
+  const entry = ROUTE_SOURCE[source]
+  if (!entry) return null
+
+  return (
+    <Badge tone={entry.tone} size="sm" title={entry.label}>
+      {entry.short}
+    </Badge>
   )
 }
 

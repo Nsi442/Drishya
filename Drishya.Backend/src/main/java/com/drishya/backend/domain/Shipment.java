@@ -1,6 +1,7 @@
 package com.drishya.backend.domain;
 
 import com.drishya.backend.domain.enums.Priority;
+import com.drishya.backend.domain.enums.RouteSource;
 import com.drishya.backend.domain.enums.ShipmentStatus;
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.AttributeOverrides;
@@ -95,6 +96,16 @@ public class Shipment {
     @CollectionTable(name = "shipment_route", joinColumns = @JoinColumn(name = "shipment_id"))
     @OrderColumn(name = "leg_index")
     private List<GeoPoint> route = new ArrayList<>();
+
+    /**
+     * Whether {@link #route} and {@link #distanceKm} were measured or drawn.
+     *
+     * <p>Defaulted here as well as in the column, so a Shipment built in code
+     * and never routed does not claim to be a road.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "route_source", nullable = false, length = 16)
+    private RouteSource routeSource = RouteSource.SYNTHETIC;
 
     @Embedded
     @AttributeOverrides({
