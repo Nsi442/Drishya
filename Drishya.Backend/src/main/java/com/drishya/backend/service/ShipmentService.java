@@ -218,6 +218,9 @@ public class ShipmentService {
                 vendor.getName() + " — " + vendor.getCity()));
         s.setDestination(new Place(destPoint.getLat(), destPoint.getLng(), fc.getName()));
         s.setRoute(route);
+        // Recorded beside the route it describes, so a drawn distance can never
+        // be mistaken for a measured one further downstream.
+        s.setRouteSource(plan.source());
         s.setProgress(0);
         s.setPosition(originPoint);
         s.setDistanceKm(distanceKm);

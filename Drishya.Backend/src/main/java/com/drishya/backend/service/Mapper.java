@@ -92,6 +92,7 @@ public class Mapper {
                 place(s.getOrigin()),
                 place(s.getDestination()),
                 s.getRoute().stream().map(Mapper::point).toList(),
+                s.getRouteSource(),
                 point(s.getPosition()),
                 s.getProgress(),
                 s.getDistanceKm(),

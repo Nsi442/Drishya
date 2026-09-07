@@ -1,6 +1,7 @@
 package com.drishya.backend.service.routing;
 
 import com.drishya.backend.domain.GeoPoint;
+import com.drishya.backend.domain.enums.RouteSource;
 import com.drishya.backend.seed.GeoUtil;
 import com.drishya.backend.seed.Rng;
 import java.net.ProxySelector;
@@ -212,11 +213,9 @@ public class RoutePlanner {
 
     // --- what the caller gets --------------------------------------------
 
-    /** Where a route came from. Logged, not yet stored — see the notes below. */
-    public enum RouteSource { ROAD, SYNTHETIC }
-
     /**
-     * A planned route and the distance that goes with it.
+     * A planned route, the distance that goes with it, and which of the two
+     * kinds it is.
      *
      * <p>The distance travels WITH the points rather than being recomputed from
      * them. For a road route it is the router's own figure, measured along the
