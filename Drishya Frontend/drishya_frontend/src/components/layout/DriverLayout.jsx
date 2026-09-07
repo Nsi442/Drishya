@@ -45,7 +45,9 @@ export default function DriverLayout() {
     [toast],
   )
 
-  useLiveShipments({ onEvent: onLiveEvent })
+  // Held while anything the driver captured is still queued, so a poll cannot
+  // overwrite it with a server that has not been told yet.
+  useLiveShipments({ onEvent: onLiveEvent, hold: !queue.online || queue.pending > 0 })
 
   if (!user) return null
 

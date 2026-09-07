@@ -274,6 +274,39 @@ hours is `StaleTripJob`'s failure broadcast to a second party who will act on it
 `trips.slot_request_notified_at` makes it once per journey rather than once per cycle.
 **An estimate that changes nobody's decision is not worth computing.**
 
+**It measures travel, not dock-in, and that distinction was found by running it.** The engine
+predicts when a vehicle reaches a *bay* — travel plus the queue it expects in the yard. Keying
+the notice on that was circular: the queue is long precisely because no dock is booked, so the
+figure stayed above the hour while the vehicle drove the last stretch. On a real run, travel fell
+90 → 68 → 45 → 23 → 1 minutes while the total never dropped below 93. Subtracting
+`predictedQueueMinutes` leaves the thing both parties mean by "an hour away".
+
+**The engine reasons in real time; the simulator does not.** `TripSimulationService` compresses
+time by `timeScale`, but the ETA engine predicts real-world minutes from lane history (~34 km/h
+on the seeded lanes). At `timeScale=10` a vehicle covers the last 50 km in four real minutes
+while the engine still believes it is ninety minutes out, so an arrival notice keyed on predicted
+time barely fires, or does not. Nothing is wrong with either component. For a demo that must show
+the notice, either drive at a low `timeScale` or raise `ARRIVAL_NOTICE_LEAD_MIN` to match the
+compression.
+
+**An enum constrained in the schema is a THREE-file change.** The two-file rule above covers
+the browser contract. It is not the whole contract: Hibernate persists these enums by NAME, and
+`alerts.type`, `positions.source` and `shipments.route_source` each carry a CHECK constraint
+listing the names the table accepts. Adding `AlertType.SLOT_REQUIRED` to the Java enum and to
+`constants.js` compiled, started, and passed every test — then failed at the moment the feature
+first did its job, because `alerts_type_check` had never heard of it. Java enum, frontend
+vocabulary, **and a migration.**
+
+**A try/catch inside `@Transactional` is not error handling.** `ApproachingArrivalJob` looped
+over every active trip with `@Transactional` on the method and a catch per trip, which reads as
+"one bad trip must not stop the others" and did the opposite: the first failed insert marked the
+transaction rollback-only, every later trip died with "current transaction is aborted", and the
+swallowed exceptions let the job log that it had **notified the receiving desk when it had
+notified nobody** — the counted row was rolled back with the rest. A per-item boundary
+(`TransactionTemplate`, as `RouteBackfillService` uses) is what makes the catch mean what it
+says. Re-read the entity inside its own transaction: the one from the listing is detached, and
+writing to it updates nothing.
+
 **Absent is not zero, in the UI as well as the API.** `formatTime`/`formatRelative` handed a
 null to `new Date(null)` — epoch 0 — and rendered "ETA 05:30 am · 20695d ago" in the same
 typeface as a real arrival. `DelayPill` defaulted a missing delay to 0 and displayed a confident

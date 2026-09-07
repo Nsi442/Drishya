@@ -46,7 +46,7 @@ function changedIds(previousById, rows) {
   return flashed
 }
 
-export default function useLiveShipments({ onEvent } = {}) {
+export default function useLiveShipments({ onEvent, hold = false } = {}) {
   const state = useAppState()
   const dispatch = useDispatch()
 
@@ -55,6 +55,7 @@ export default function useLiveShipments({ onEvent } = {}) {
   const shipmentsRef = useRef(state.shipments)
   const alertIdsRef = useRef(null)
   const enabledRef = useRef(state.ui.liveEnabled)
+  const holdRef = useRef(hold)
   const signedInRef = useRef(Boolean(state.auth.user))
   const onEventRef = useRef(onEvent)
   const inFlightRef = useRef(false)
@@ -65,6 +66,7 @@ export default function useLiveShipments({ onEvent } = {}) {
     shipmentsRef.current = state.shipments
     enabledRef.current = state.ui.liveEnabled
     signedInRef.current = Boolean(state.auth.user)
+    holdRef.current = hold
     onEventRef.current = onEvent
   })
 
@@ -106,6 +108,17 @@ export default function useLiveShipments({ onEvent } = {}) {
     // starts before sign-in has finished — is a guaranteed 401 and a spurious
     // error toast. Cheaper to not ask.
     if (!signedInRef.current) return
+
+    // Held while this device has writes the server has not accepted yet — the
+    // driver's offline queue. A poll would replace the store with an answer
+    // that is knowably behind this screen, so the gate-in the driver just
+    // recorded would vanish in front of them and reappear when the queue
+    // drained. The offline toggle in the driver shell is a demo switch rather
+    // than a real disconnection, so the network is usually still up and the
+    // request would succeed: being offline is not what makes this unsafe,
+    // having unsynced work is.
+    if (holdRef.current) return
+
     inFlightRef.current = true
 
     try {
