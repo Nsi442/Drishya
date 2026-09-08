@@ -37,6 +37,22 @@ docker exec api sh -c "getent hosts router.project-osrm.org || echo DNS-FAILED" 
 echo "--- a real request, timed (the app allows 3s to connect, 6s to read) ---"
 docker exec api sh -c "curl -s -o /dev/null -w \"http=%{http_code} dns=%{time_namelookup}s connect=%{time_connect}s total=%{time_total}s\n\" --max-time 25 \"https://router.project-osrm.org/route/v1/driving/73.8567,18.5204;73.0631,19.2967?overview=simplified&geometries=geojson\"" 2>&1 | head -3
 echo
+echo "=== 2b. what the server does with each encoding ==="
+U="https://router.project-osrm.org/route/v1/driving/73.8567,18.5204;73.0631,19.2967?overview=simplified&geometries=geojson"
+for enc in gzip identity; do
+  docker exec api sh -c "curl -s -D /tmp/h -o /tmp/b -H 'Accept-Encoding: $enc' \"$U\" 2>/dev/null; \
+    printf '  Accept-Encoding: %-9s -> ' '$enc'; \
+    ce=\$(grep -i '^content-encoding:' /tmp/h | tr -d '\r' | cut -d' ' -f2-); \
+    printf 'Content-Encoding: %s | ' \"\${ce:-none}\"; \
+    magic=\$(od -An -tx1 -N2 /tmp/b | tr -d ' '); \
+    if [ \"\$magic\" = '1f8b' ]; then echo 'body IS gzip'; \
+    elif [ \"\$(head -c1 /tmp/b)\" = '{' ]; then echo 'body is plain JSON'; \
+    else echo \"body starts \$magic\"; fi" 2>&1 | head -2
+done
+echo "  A reply labelled gzip whose body is plain JSON is the bug: something"
+echo "  inflates by the header and the body was already decompressed."
+
+echo
 echo "=== 3. what did the application say? ==="
 docker logs api 2>&1 | grep -iE "Routing failed|Router returned|Routed .* km" | tail -10
 if ! docker logs api 2>&1 | grep -qiE "Routing failed|Router returned|Routed "; then
