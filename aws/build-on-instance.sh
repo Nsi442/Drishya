@@ -150,6 +150,27 @@ docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep drishya | hea
 run_step "Adding the settings user data will not have written" 3 "
 set -e
 grep -q ROUTING_ENABLED /etc/drishya.env || printf 'ROUTING_ENABLED=true\nROUTING_BASE_URL=https://router.project-osrm.org\nARRIVAL_NOTICE_LEAD_MIN=60\n' >> /etc/drishya.env
+
+# The datasource URL has the same problem as the settings above, and a worse
+# consequence. pgjdbc's read timeout is infinite by default, so a connection
+# that is alive here and dead at the peer blocks in read() forever, is never
+# returned, and five of them wedge a pool of five permanently — the site serves,
+# and everything touching the database hangs. socketTimeout is the cure, it
+# lives in this URL, and user data wrote this file once at first boot: an
+# instance created before the fix keeps the broken URL however many times the
+# image is rebuilt on top of it. Rebuilt by splitting on '?' rather than sed,
+# because the value contains '&' and the file's other lines contain '=' inside
+# a password.
+url=\$(grep '^SPRING_DATASOURCE_URL=' /etc/drishya.env | cut -d= -f2-)
+if printf %s \"\$url\" | grep -q socketTimeout; then
+  echo 'datasource: already has socketTimeout'
+else
+  grep -v '^SPRING_DATASOURCE_URL=' /etc/drishya.env > /tmp/env.new
+  echo \"SPRING_DATASOURCE_URL=\${url%%\\?*}?reWriteBatchedInserts=true&socketTimeout=30&tcpKeepAlive=true&connectTimeout=10\" >> /tmp/env.new
+  install -m 600 /tmp/env.new /etc/drishya.env && rm -f /tmp/env.new
+  echo 'datasource: socketTimeout added'
+fi
+
 grep -c . /etc/drishya.env | xargs echo 'settings lines:'
 grep -oE '^[A-Z_]+' /etc/drishya.env | sort
 "
