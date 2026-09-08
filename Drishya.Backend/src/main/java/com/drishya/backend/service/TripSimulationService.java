@@ -24,6 +24,7 @@ import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,19 +50,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class TripSimulationService {
 
     private static final Logger log = LoggerFactory.getLogger(TripSimulationService.class);
-
-    /** The Python simulator's default, so the two agree out of the box. */
-    private static final double DEFAULT_SPEED_KMPH = 52.0;
-
-    /**
-     * Simulated seconds per real second, by default.
-     *
-     * <p>Sixty puts a 130 km lane at a little over two minutes, which is about
-     * as long as anyone will watch a map before deciding it is broken. Real
-     * time is available by asking for 1.0 and is the honest setting for
-     * measuring anything; this is the setting for showing somebody.
-     */
-    private static final double DEFAULT_TIME_SCALE = 60.0;
 
     private static final double MAX_SPEED_KMPH = 120.0;
     private static final double MAX_TIME_SCALE = 600.0;
@@ -103,11 +91,43 @@ public class TripSimulationService {
     private final TripRepository trips;
     private final PositionIngestService ingest;
 
+    /** The Python simulator's default, so the two agree out of the box. */
+    private final double defaultSpeedKmph;
+
+    /**
+     * Simulated seconds per real second, when the caller does not say.
+     *
+     * <p><b>This is the dial that decides how fast a lorry appears to move</b>,
+     * because what a viewer sees is speed multiplied by this. It was 60, which
+     * put a 130 km lane at a little over two minutes — quick enough to watch,
+     * and too quick for the rest of the system to keep up with.
+     *
+     * <p>The ETA engine reasons in real-world minutes from lane history, around
+     * 34 km/h on the seeded lanes, and has no idea time is being compressed. At
+     * 60x a vehicle covers the last 50 km in under a minute while the engine
+     * still believes it is ninety minutes out, so the arrival notice never
+     * fires and the predicted time on screen never catches up with the pin. The
+     * ETA cycle only recomputes once a minute, which at 60x is a whole hour of
+     * simulated driving between updates.
+     *
+     * <p>Twelve keeps the map worth watching — a 130 km lane in about
+     * thirteen minutes — while leaving the engine several cycles to track the
+     * vehicle, and puts the last thirty-odd kilometres inside the window where
+     * the receiving desk actually gets told to book a dock. Real time is still
+     * available by asking for 1.0, and is the honest setting for measuring
+     * anything rather than showing it.
+     */
+    private final double defaultTimeScale;
+
     public TripSimulationService(TripSimulationRepository simulations, TripRepository trips,
-                                 PositionIngestService ingest) {
+                                 PositionIngestService ingest,
+                                 @Value("${drishya.simulation.default-speed-kmph:52}") double defaultSpeedKmph,
+                                 @Value("${drishya.simulation.default-time-scale:12}") double defaultTimeScale) {
         this.simulations = simulations;
         this.trips = trips;
         this.ingest = ingest;
+        this.defaultSpeedKmph = defaultSpeedKmph;
+        this.defaultTimeScale = defaultTimeScale;
     }
 
     // ----------------------------------------------------------------- start
@@ -154,9 +174,9 @@ public class TripSimulationService {
         sim.setTravelledKm(0);
         sim.setRouteKm(routeKm);
         sim.setSpeedKmph(clamp(request == null ? null : request.speedKmph(),
-                DEFAULT_SPEED_KMPH, MAX_SPEED_KMPH));
+                defaultSpeedKmph, MAX_SPEED_KMPH));
         sim.setTimeScale(clamp(request == null ? null : request.timeScale(),
-                DEFAULT_TIME_SCALE, MAX_TIME_SCALE));
+                defaultTimeScale, MAX_TIME_SCALE));
         sim.setStartedAt(now);
         sim.setLastTickAt(now);
         sim.setEndedAt(null);

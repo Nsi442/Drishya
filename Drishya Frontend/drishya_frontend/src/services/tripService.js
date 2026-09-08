@@ -55,9 +55,14 @@ export function listTripsForShipment(shipmentId) {
 /**
  * Starts a vehicle on a trip. Both options have server-side defaults.
  *
- * `timeScale` is simulated seconds per real second — 60 puts a 130 km lane at
- * a couple of minutes. Pass 1 for real time, which is the honest setting if you
- * are measuring anything rather than showing somebody.
+ * `timeScale` is simulated seconds per real second, and what a viewer sees is
+ * that multiplied by the speed — so it is the dial for how fast the lorry
+ * looks. The server defaults to 12, which crosses a 130 km lane in about
+ * thirteen minutes. It used to default to 60, which crossed it in two and
+ * outran the ETA engine: that reasons in real-world minutes and recomputes
+ * once a minute, so the pin arrived while the estimate still said hours.
+ * Pass 1 for real time, which is the honest setting if you are measuring
+ * anything rather than showing somebody.
  */
 export function startSimulation(tripId, { speedKmph, timeScale } = {}) {
   return post(`/v1/trips/${tripId}/simulation`, { speedKmph, timeScale },

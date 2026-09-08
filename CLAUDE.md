@@ -283,11 +283,18 @@ figure stayed above the hour while the vehicle drove the last stretch. On a real
 
 **The engine reasons in real time; the simulator does not.** `TripSimulationService` compresses
 time by `timeScale`, but the ETA engine predicts real-world minutes from lane history (~34 km/h
-on the seeded lanes). At `timeScale=10` a vehicle covers the last 50 km in four real minutes
-while the engine still believes it is ninety minutes out, so an arrival notice keyed on predicted
-time barely fires, or does not. Nothing is wrong with either component. For a demo that must show
-the notice, either drive at a low `timeScale` or raise `ARRIVAL_NOTICE_LEAD_MIN` to match the
-compression.
+on the seeded lanes) and recomputes only once a minute. At `timeScale=60` — the old default — a
+vehicle crossed a 130 km lane in two minutes, which is one ETA cycle for the whole journey: the
+pin arrived while the estimate still said hours, and the arrival notice never fired. Nothing is
+wrong with either component; they simply keep different clocks.
+
+**`timeScale` is the dial for how fast the lorry looks**, since a viewer sees it multiplied by
+speed. It now defaults to 12 (`SIM_TIME_SCALE`), which crosses that lane in about thirteen
+minutes — slow enough for the engine to track the vehicle across several cycles and for the last
+thirty-odd kilometres to fall inside the dock-notice window, fast enough to watch. `SIM_SPEED_KMPH`
+is the other half and should stay near 52: it is what the lane history was measured against, so
+changing it makes the engine's numbers disagree with the vehicle. Ask for 1.0 for real time, which
+is the honest setting for measuring rather than showing.
 
 **An enum constrained in the schema is a THREE-file change.** The two-file rule above covers
 the browser contract. It is not the whole contract: Hibernate persists these enums by NAME, and
