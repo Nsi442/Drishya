@@ -90,8 +90,13 @@ class RoutePlannerTest {
         server.stop(0);
     }
 
+    private String base() {
+        return "http://127.0.0.1:" + server.getAddress().getPort();
+    }
+
+    /** OSRM at the stub, BRouter switched off, which is the original shape. */
     private RoutePlanner planner() {
-        return new RoutePlanner(true, "http://127.0.0.1:" + server.getAddress().getPort(), 2000, 4000);
+        return new RoutePlanner(true, base(), "", 2000, 4000);
     }
 
     private RoutePlanner.RoutePlan plan() {
@@ -218,8 +223,7 @@ class RoutePlannerTest {
     void disabledNeverCalls() {
         body = ok(153_400, new double[][] {{73.8567, 18.5204}, {73.0631, 19.2967}});
 
-        RoutePlanner off = new RoutePlanner(
-                false, "http://127.0.0.1:" + server.getAddress().getPort(), 2000, 4000);
+        RoutePlanner off = new RoutePlanner(false, base(), "", 2000, 4000);
         RoutePlanner.RoutePlan plan = off.plan(PUNE, BHIWANDI, new Rng(1));
 
         assertThat(plan.source()).isEqualTo(RouteSource.SYNTHETIC);

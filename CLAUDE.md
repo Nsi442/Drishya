@@ -367,6 +367,24 @@ unproductive cycles back off by doubling to a ceiling so a dead router stays che
 success clears it. Verified against real PostGIS and a stub router: 60 synthetic to 0 unattended,
 then 2 attempts across 9 cycles once the router died, then recovery within one cycle of its return.
 
+**One free router with no SLA is the fragility, so there are two.** `RoutingBackend` is an
+interface and `RoutePlanner` walks a chain: OSRM first (where the load already sits and what the
+lane distances were measured against), then BRouter, then the drawn curve. They must be
+independent to be worth having — `router.project-osrm.org` resolves to `routing.openstreetmap.de`,
+so a second OSRM mirror would have gone down with the first; BRouter is a different operator
+running different software, and free and keyless, which keeps it inside the no-paid-APIs rule.
+Blank `ROUTING_BROUTER_URL` to switch the fallback off without switching routing off. Plausibility
+and endpoint-pinning live in the planner rather than each backend, so a third cannot be added
+without them.
+
+**`RestClient.uri(String)` encodes its argument again.** BRouter separates coordinate pairs with a
+`|`, which is not a legal URI character, so it must be percent-encoded — and a pre-encoded `%7C`
+passed as a String became `%257C`, which the far end decoded to the literal text `%7C` and could
+not split. The symptom was a router closing the connection: "header parser received no bytes",
+naming nothing. Build a `URI` with `UriComponentsBuilder` and pass that; a URI is sent through
+untouched. **Note also that Spring strips the query string from its I/O error messages**, so a URL
+in a log looking bare is not evidence the query was lost.
+
 **Absent is not zero, in the UI as well as the API.** `formatTime`/`formatRelative` handed a
 null to `new Date(null)` — epoch 0 — and rendered "ETA 05:30 am · 20695d ago" in the same
 typeface as a real arrival. `DelayPill` defaulted a missing delay to 0 and displayed a confident
