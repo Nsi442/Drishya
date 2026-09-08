@@ -342,6 +342,15 @@ tens of kilobytes fetched once per booking, and compressing it saves nothing wor
 visible only in a log. **A fallback that is meant to be invisible needs a log line that is not.**
 The first version logged only `e.getClass().getSimpleName()` and that cost the diagnosis outright.
 
+**A `??` fallback on a field that does not exist reads as data.** `Receiving.jsx` rendered
+`row.dockName ?? 'No dock'`, and `ShipmentDto` has never carried a `dockName` — it carries
+`dockId`. So every consignment in the receiving queue said "No dock", including the four standing
+on a numbered bay, and the screen looked like a working page reporting an empty yard rather than
+a broken one. Every other screen derives the name (`ArrivalBoard` inline, `InboundDetail` inline,
+`YardVehicleDto` from the backend) and `referenceData.dockName(dockId)` exists for exactly this.
+**A default that is indistinguishable from a real answer will hide the bug that produces it** —
+the same fault as `DelayPill` defaulting a missing delay to a confident "On time".
+
 **Absent is not zero, in the UI as well as the API.** `formatTime`/`formatRelative` handed a
 null to `new Date(null)` — epoch 0 — and rendered "ETA 05:30 am · 20695d ago" in the same
 typeface as a real arrival. `DelayPill` defaulted a missing delay to 0 and displayed a confident
