@@ -355,6 +355,18 @@ a broken one. Every other screen derives the name (`ArrivalBoard` inline, `Inbou
 **A default that is indistinguishable from a real answer will hide the bug that produces it** —
 the same fault as `DelayPill` defaulting a missing delay to a confident "On time".
 
+**A route is chosen once, so routing needs something that comes back.** `RoutePlanner` decides at
+booking and never revisits, which is right for a road but means the decision inherits whatever the
+router was doing in that one second — unreachable for a moment, and that consignment is a straight
+line for life. On the deployed site the router had been mislabelling its encoding for a week, so
+every booking fell back and the map was twenty-three straight lines with nothing to say why. The
+cure existed as `RouteBackfillService`, but only behind an endpoint someone had to know about and
+a service token that was not set. **A repair that requires an operator to notice is not a repair.**
+`RouteBackfillJob` runs the same work on a timer, five every ten minutes, until nothing is drawn;
+unproductive cycles back off by doubling to a ceiling so a dead router stays cheap, and one
+success clears it. Verified against real PostGIS and a stub router: 60 synthetic to 0 unattended,
+then 2 attempts across 9 cycles once the router died, then recovery within one cycle of its return.
+
 **Absent is not zero, in the UI as well as the API.** `formatTime`/`formatRelative` handed a
 null to `new Date(null)` — epoch 0 — and rendered "ETA 05:30 am · 20695d ago" in the same
 typeface as a real arrival. `DelayPill` defaulted a missing delay to 0 and displayed a confident
