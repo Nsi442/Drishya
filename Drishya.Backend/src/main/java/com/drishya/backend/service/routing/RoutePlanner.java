@@ -153,21 +153,21 @@ public class RoutePlanner {
                 .uri(baseUrl + path)
                 // Ask for it uncompressed, and mean it.
                 //
-                // Left alone, this client advertises gzip and the public
-                // router's proxy obliges — and the reply then failed to
-                // inflate: "ZipException: incorrect header check", wrapped as
-                // a bare RestClientException, so every booking on the deployed
-                // site fell back to a drawn curve while the same box could
-                // fetch the same URL with curl in half a second. A gzipped
-                // reply decodes correctly in a test against a local stub, so
-                // the fault is in how the layers between here and that proxy
-                // hand the encoding along, not in gzip itself.
+                // Left alone this client advertises gzip, the public router's
+                // proxy obliges, and the reply came back labelled gzip with a
+                // body that had already been decompressed — so inflating it
+                // failed with "ZipException: incorrect header check" and every
+                // booking on the deployed site quietly drew a curve instead.
                 //
-                // Rather than work out which layer, stop creating the
-                // ambiguity. A route response is a few tens of kilobytes,
-                // fetched once per booking, on a link that measured 0.5s —
-                // compressing it saves nothing worth a failure mode that is
-                // invisible except in a log nobody reads.
+                // It has to be avoided rather than handled. The inflation
+                // happens in the HTTP client, before any converter and before
+                // anything this class could inspect: a reply that lies about
+                // its encoding fails while the body is still being read, so
+                // there is no point at which sniffing the bytes would help.
+                // Not asking for compression is the only lever here.
+                //
+                // Nothing is lost by it. A route is tens of kilobytes fetched
+                // once per booking, over a link measured at half a second.
                 .header(HttpHeaders.ACCEPT_ENCODING, "identity")
                 .retrieve()
                 .body(OsrmResponse.class);

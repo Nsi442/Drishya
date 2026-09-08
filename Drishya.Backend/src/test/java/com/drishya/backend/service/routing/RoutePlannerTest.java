@@ -46,6 +46,8 @@ class RoutePlannerTest {
     private final AtomicReference<String> lastPath = new AtomicReference<>();
     private final AtomicReference<String> lastAcceptEncoding = new AtomicReference<>();
     private volatile boolean gzipWhenOffered = false;
+    /** Claim gzip in the header while sending plain JSON — what production did. */
+    private volatile boolean lieAboutGzip = false;
     private volatile int status = 200;
     private volatile String body = "";
 
@@ -62,7 +64,11 @@ class RoutePlannerTest {
 
             // Compress only when the client says it can take it, which is what
             // the real server does and the whole point of the test below.
-            if (gzipWhenOffered && accept != null && accept.contains("gzip")) {
+            if (lieAboutGzip) {
+                // Header says gzip, body is plain. Anything that inflates by
+                // the header dies here with "incorrect header check".
+                exchange.getResponseHeaders().add("Content-Encoding", "gzip");
+            } else if (gzipWhenOffered) {
                 ByteArrayOutputStream buffer = new ByteArrayOutputStream();
                 try (GZIPOutputStream gz = new GZIPOutputStream(buffer)) {
                     gz.write(out);
@@ -310,6 +316,54 @@ class RoutePlannerTest {
         assertThat(lastAcceptEncoding.get())
                 .as("this client must not advertise an encoding it cannot reliably decode")
                 .isEqualTo("identity");
+    }
+
+    @Test
+    @DisplayName("falls back safely when a reply lies about its encoding")
+    void mislabelledResponseFallsBack() {
+        // The production failure, reproduced. Something in front of the public
+        // router decompressed the body and left Content-Encoding: gzip on it,
+        // so inflating by the header failed on a plain "{" — ZipException:
+        // incorrect header check, wrapped as a bare RestClientException, and
+        // every booking quietly drew a curve instead.
+        //
+        // Decoding by the body's own first two bytes rather than by the header
+        // makes the lie irrelevant.
+        lieAboutGzip = true;
+        body = ok(153_400, new double[][] {
+                {73.8567, 18.5204},
+                {73.5000, 18.9000},
+                {73.0631, 19.2967}});
+
+        RoutePlanner.RoutePlan plan = plan();
+
+        // SYNTHETIC, not ROAD, and that is the honest outcome rather than a
+        // shortcoming. The inflation happens inside the HTTP client while the
+        // body is still being read, before any converter and before anything
+        // this class can inspect, so a reply that lies about its encoding
+        // cannot be rescued here — only avoided, by not asking for compression
+        // in the first place. What this asserts is that it stays a fallback: a
+        // consignment still gets booked, with a drawn route, instead of the
+        // booking failing because a third party mislabelled a header.
+        assertThat(plan.source()).isEqualTo(RouteSource.SYNTHETIC);
+        assertThat(plan.points()).hasSizeGreaterThanOrEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("reads a genuinely gzipped reply, whatever was asked for")
+    void survivesGzipSentAnyway() {
+        // A server is free to ignore Accept-Encoding: identity. This one does,
+        // which is the case the identity header alone would not have covered.
+        gzipWhenOffered = true;
+        lastAcceptEncoding.set(null);
+        body = ok(153_400, new double[][] {
+                {73.8567, 18.5204},
+                {73.0631, 19.2967}});
+
+        RoutePlanner.RoutePlan plan = plan();
+
+        assertThat(plan.source()).isEqualTo(RouteSource.ROAD);
+        assertThat(plan.distanceKm()).isEqualTo(153.4);
     }
 
     // --- the stub's wire shape ---------------------------------------------

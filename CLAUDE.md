@@ -337,10 +337,14 @@ reply then failed to inflate with `ZipException: incorrect header check`, wrappe
 `RestClientException`. Every booking on the deployed site fell back to a drawn curve while the
 same container could fetch the same URL with curl in 0.5s, and a gzipped reply decodes correctly
 against a local stub, so the fault is in how the layers hand the encoding along rather than in
-gzip. `RoutePlanner` sends `Accept-Encoding: identity` instead of diagnosing that: a route is
-tens of kilobytes fetched once per booking, and compressing it saves nothing worth a failure mode
-visible only in a log. **A fallback that is meant to be invisible needs a log line that is not.**
-The first version logged only `e.getClass().getSimpleName()` and that cost the diagnosis outright.
+gzip. Reproduced since, with a stub that claims gzip and sends plain JSON: the inflation happens
+**inside the HTTP client, while the body is still being read** — before any message converter and
+before anything `RoutePlanner` could inspect — so a reply that lies about its encoding cannot be
+rescued, only avoided. Sniffing the body's magic bytes was tried and removed: the stream fails
+upstream of any point where it could look. `Accept-Encoding: identity` is the only lever at this
+layer, and a route is tens of kilobytes fetched once per booking, so nothing is lost by it.
+**A fallback that is meant to be invisible needs a log line that is not.** The first version
+logged only `e.getClass().getSimpleName()` and that cost the diagnosis outright.
 
 **A `??` fallback on a field that does not exist reads as data.** `Receiving.jsx` rendered
 `row.dockName ?? 'No dock'`, and `ShipmentDto` has never carried a `dockName` — it carries
