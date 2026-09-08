@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useDispatch, useAuth, useToast, useAppState } from '../../store/hooks.js'
 import { ACTIONS } from '../../store/reducer.js'
 import useAsync from '../../hooks/useAsync.js'
+import { dockName } from '../../services/referenceData.js'
 import useDocumentTitle from '../../hooks/useDocumentTitle.js'
 import { getReceivingQueue, submitGRN } from '../../services/fcService.js'
 import { DOC_TYPES } from '../../lib/constants.js'
@@ -313,7 +314,14 @@ export default function Receiving() {
                     </span>
                     <span className="row between gap-8 mt-4 t-xs c-subtle">
                       <span>{formatNumber(row.cartons)} cartons</span>
-                      <span>{row.dockName ?? 'No dock'}</span>
+                      {/* Resolved from dockId, not read off the row.
+                          ShipmentDto carries dockId and has never carried a
+                          dockName, so `row.dockName` was always undefined and
+                          every consignment in this queue read "No dock" —
+                          including the ones standing on a bay. Every other
+                          screen derives it; this one forgot, and the fallback
+                          made the omission look like data. */}
+                      <span>{dockName(row.dockId) ?? 'No dock'}</span>
                     </span>
                   </button>
                 )
