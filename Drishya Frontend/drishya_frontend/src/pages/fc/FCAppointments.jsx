@@ -18,6 +18,7 @@ import Icon from '../../components/ui/Icon.jsx'
 import EmptyState from '../../components/ui/EmptyState.jsx'
 import { PageHeader, Callout, DataPoint } from '../../components/ui/Misc.jsx'
 import { SkeletonCards } from '../../components/ui/Skeleton.jsx'
+import useReferenceData from '../../hooks/useReferenceData.js'
 
 const REJECT_REASONS = [
   'Dock at capacity for that window',
@@ -55,7 +56,12 @@ export default function FCAppointments() {
     }
   }, [appts.data])
 
-  const docks = useMemo(() => db.docks.filter((d) => d.fcId === fcId), [fcId])
+  const refVersion = useReferenceData()
+  // refVersion is not read in the callback and that is deliberate: it is the
+  // signal that refData has filled, which is invisible to React otherwise.
+  // See hooks/useReferenceData.js. Removing it reinstates an empty snapshot.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const docks = useMemo(() => db.docks.filter((d) => d.fcId === fcId), [fcId, refVersion])
   const visible = grouped[tab] ?? []
 
   // Which bookings overlap another on the same bay. Computed from the list

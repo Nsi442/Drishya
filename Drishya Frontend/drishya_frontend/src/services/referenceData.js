@@ -64,6 +64,38 @@ refData.integrations = integrations
 
 let inFlight = null
 
+// --- change notification -------------------------------------------------
+//
+// The in-place mutation above is what lets a select read its options
+// synchronously, and it is also invisible to React: nothing re-renders when
+// the arrays fill. Direct reads during render therefore self-correct on the
+// next render, but a useMemo does not — it caches the empty snapshot it took
+// on first render and keeps it for the life of the mount.
+//
+// That is not hypothetical. On the receiving desk's dashboard the site name
+// resolved (read inline) while the dock list came back empty (read through a
+// useMemo keyed on fcId, which never changes), so "Docks occupied" read 0/0
+// beside "2 unloading now" and the whole dock panel rendered blank.
+//
+// So the fill is now a subscribable event. useReferenceData() turns it into a
+// value a memo can depend on.
+let version = 0
+const listeners = new Set()
+
+export function refDataVersion() {
+  return version
+}
+
+export function subscribeReferenceData(fn) {
+  listeners.add(fn)
+  return () => listeners.delete(fn)
+}
+
+function notifyLoaded() {
+  version += 1
+  for (const fn of listeners) fn()
+}
+
 /**
  * Loads everything in parallel. Safe to call repeatedly — concurrent callers
  * share one request, and a completed load is a no-op unless forced.
@@ -93,6 +125,7 @@ export function loadReferenceData({ force = false } = {}) {
         shipments,
         loaded: true,
       })
+      notifyLoaded()
       return refData
     })
     .finally(() => {

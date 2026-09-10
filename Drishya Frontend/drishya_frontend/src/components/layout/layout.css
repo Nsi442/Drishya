@@ -126,6 +126,42 @@
   border-radius: 0 2px 2px 0;
   background: var(--teal-400);
 }
+/* The second tier of a ranked rail.
+
+   A <details> rather than a scripted panel: it is open/closed state the
+   browser already owns, it survives with no JS, and the summary is focusable
+   and announced as a disclosure without any aria wiring of ours. */
+.nav-more {
+  /* A plain flex column, deliberately NOT display:contents. Contents removes
+     the details box, and the closed state is a UA behaviour attached to that
+     box — several engines then render the children of a shut disclosure. */
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: var(--space-3);
+}
+.nav-more-summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--shell-item-muted, rgba(168, 184, 212, 0.72));
+  font-weight: 500;
+}
+/* Safari still draws its own triangle without this. */
+.nav-more-summary::-webkit-details-marker {
+  display: none;
+}
+.nav-more-chevron {
+  transition: transform 0.15s ease;
+}
+.nav-more[open] > .nav-more-summary .nav-more-chevron {
+  transform: rotate(90deg);
+}
+/* Indented so the group reads as subordinate to the links above it rather
+   than as six more of the same. */
+.nav-more > .nav-item:not(.nav-more-summary) {
+  margin-left: 12px;
+}
+
 .nav-item:focus-visible {
   outline: 2px solid var(--teal-400);
   outline-offset: -2px;

@@ -17,6 +17,7 @@ import { SegmentedControl } from '../../components/ui/Tabs.jsx'
 import { ConfirmModal } from '../../components/ui/Modal.jsx'
 import { DataPoint, Callout } from '../../components/ui/Misc.jsx'
 import './driver.css'
+import useReferenceData from '../../hooks/useReferenceData.js'
 
 // The driver shell is bilingual. Only the shell strings are switched — the
 // consignment data itself stays as it was entered.
@@ -61,7 +62,12 @@ export default function DriverProfile() {
   const now = useNow(600000)
   const t = STRINGS[ui.language] ?? STRINGS.en
 
-  const driver = useMemo(() => db.drivers.find((d) => d.id === (user?.driverId ?? 'driver-1')), [user])
+  const refVersion = useReferenceData()
+  // refVersion is not read in the callback and that is deliberate: it is the
+  // signal that refData has filled, which is invisible to React otherwise.
+  // See hooks/useReferenceData.js. Removing it reinstates an empty snapshot.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const driver = useMemo(() => db.drivers.find((d) => d.id === (user?.driverId ?? 'driver-1')), [user, refVersion])
   const [available, setAvailable] = useState(driver?.available ?? true)
 
   const shipments = selectShipments(state)
@@ -76,7 +82,11 @@ export default function DriverProfile() {
     }
   }, [shipments, driver])
 
-  const vehicle = useMemo(() => db.vehicles.find((v) => v.id === driver?.vehicleId), [driver])
+  // refVersion is not read in the callback and that is deliberate: it is the
+  // signal that refData has filled, which is invisible to React otherwise.
+  // See hooks/useReferenceData.js. Removing it reinstates an empty snapshot.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const vehicle = useMemo(() => db.vehicles.find((v) => v.id === driver?.vehicleId), [driver, refVersion])
   const licenceDays = driver ? Math.round((new Date(driver.licenceExpiry).getTime() - now) / DAY) : 0
 
   const onToggleAvailability = async (next) => {

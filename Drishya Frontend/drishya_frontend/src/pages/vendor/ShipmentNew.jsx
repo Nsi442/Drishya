@@ -18,6 +18,7 @@ import FileDrop from '../../components/ui/FileDrop.jsx'
 import Checkbox from '../../components/ui/Checkbox.jsx'
 import Icon from '../../components/ui/Icon.jsx'
 import { PageHeader, Callout, DataPoint } from '../../components/ui/Misc.jsx'
+import useReferenceData from '../../hooks/useReferenceData.js'
 
 const STEPS = [
   { key: 'consignment', label: 'Consignment', icon: 'package' },
@@ -68,8 +69,17 @@ export default function ShipmentNew() {
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }))
 
-  const vehicles = useMemo(() => db.vehicles.filter((v) => v.carrier === form.carrier), [form.carrier])
-  const docks = useMemo(() => db.docks.filter((d) => d.fcId === form.fcId), [form.fcId])
+  const refVersion = useReferenceData()
+  // refVersion is not read in the callback and that is deliberate: it is the
+  // signal that refData has filled, which is invisible to React otherwise.
+  // See hooks/useReferenceData.js. Removing it reinstates an empty snapshot.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const vehicles = useMemo(() => db.vehicles.filter((v) => v.carrier === form.carrier), [form.carrier, refVersion])
+  // refVersion is not read in the callback and that is deliberate: it is the
+  // signal that refData has filled, which is invisible to React otherwise.
+  // See hooks/useReferenceData.js. Removing it reinstates an empty snapshot.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const docks = useMemo(() => db.docks.filter((d) => d.fcId === form.fcId), [form.fcId, refVersion])
   const fc = db.fulfilmentCentres.find((f) => f.id === form.fcId)
   const vendor = db.vendors.find((v) => v.id === form.vendorId)
   const vehicle = db.vehicles.find((v) => v.id === form.vehicleId)

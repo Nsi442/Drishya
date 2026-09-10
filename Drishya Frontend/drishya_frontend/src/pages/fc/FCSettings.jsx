@@ -15,6 +15,7 @@ import Badge from '../../components/ui/Badge.jsx'
 import Avatar from '../../components/ui/Avatar.jsx'
 import Modal from '../../components/ui/Modal.jsx'
 import { PageHeader, Callout, DataPoint } from '../../components/ui/Misc.jsx'
+import useReferenceData from '../../hooks/useReferenceData.js'
 
 const TABS = [
   { value: 'profile', label: 'FC profile', icon: 'building' },
@@ -38,7 +39,12 @@ export default function FCSettings() {
   const [saving, setSaving] = useState(false)
   const [editingDock, setEditingDock] = useState(null)
 
-  const fc = useMemo(() => db.fulfilmentCentres.find((f) => f.id === fcId), [fcId])
+  const refVersion = useReferenceData()
+  // refVersion is not read in the callback and that is deliberate: it is the
+  // signal that refData has filled, which is invisible to React otherwise.
+  // See hooks/useReferenceData.js. Removing it reinstates an empty snapshot.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const fc = useMemo(() => db.fulfilmentCentres.find((f) => f.id === fcId), [fcId, refVersion])
   const [docks, setDocks] = useState(() => db.docks.filter((d) => d.fcId === fcId))
 
   const [profile, setProfile] = useState({

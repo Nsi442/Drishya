@@ -21,6 +21,7 @@ import StatCard from '../../components/ui/StatCard.jsx'
 import Skeleton from '../../components/ui/Skeleton.jsx'
 import { PageHeader, Callout, DataPoint } from '../../components/ui/Misc.jsx'
 import { ErrorState } from '../../components/ui/EmptyState.jsx'
+import useReferenceData from '../../hooks/useReferenceData.js'
 
 const toISODate = (d) => new Date(d).toISOString().slice(0, 10)
 
@@ -78,7 +79,12 @@ export default function VendorAppointments() {
     setAnchor(next)
   }
 
-  const docks = useMemo(() => db.docks.filter((d) => d.fcId === request.fcId), [request.fcId])
+  const refVersion = useReferenceData()
+  // refVersion is not read in the callback and that is deliberate: it is the
+  // signal that refData has filled, which is invisible to React otherwise.
+  // See hooks/useReferenceData.js. Removing it reinstates an empty snapshot.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const docks = useMemo(() => db.docks.filter((d) => d.fcId === request.fcId), [request.fcId, refVersion])
   const bookableShipments = useMemo(
     () => db.shipments.filter((s) => s.status === 'created' || s.status === 'docs_pending').slice(0, 25),
     [],
