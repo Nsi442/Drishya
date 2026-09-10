@@ -30,7 +30,7 @@ function shipmentLinkFor(role, shipmentId) {
   return `/vendor/shipments/${shipmentId}`
 }
 
-export default function NotificationDrawer({ open, onClose }) {
+export default function NotificationDrawer({ open, onClose, openExceptions = 0 }) {
   const { items, unread, markAllRead, markRead: markReadLocal } = useAlerts()
   const { user } = useAuth()
 
@@ -92,12 +92,30 @@ export default function NotificationDrawer({ open, onClose }) {
       </div>
     ) : null
 
+  // Driver keeps none of these: there is no alert log or exception queue in
+  // that portal, and the drawer is the whole of it.
+  const footerLinks =
+    user?.role === 'fc'
+      ? [{ to: '/fc/exceptions', label: 'Receiving exceptions', count: openExceptions }]
+      : user?.role === 'driver'
+        ? []
+        : [
+            { to: '/vendor/alerts', label: 'All alerts' },
+            { to: '/vendor/exceptions', label: 'Exceptions' },
+          ]
+
   return (
     <Drawer
       open={open}
       onClose={onClose}
       title="Notifications"
-      subtitle={unread ? `${unread} unread` : 'All caught up'}
+      // Spells out the bell's number rather than leaving a total with two
+      // meanings behind it.
+      subtitle={
+        [unread ? `${unread} unread` : null, openExceptions ? `${openExceptions} open exceptions` : null]
+          .filter(Boolean)
+          .join(' · ') || 'All caught up'
+      }
       actions={
         unread ? (
           <Button variant="ghost" size="sm" onClick={onMarkAll}>
@@ -105,13 +123,26 @@ export default function NotificationDrawer({ open, onClose }) {
           </Button>
         ) : null
       }
-      footer={
-        user?.role !== 'driver' ? (
-          <Button variant="secondary" size="sm" block to={user?.role === 'fc' ? '/fc/exceptions' : '/vendor/alerts'} onClick={onClose}>
-            Open the full alert log
-          </Button>
-        ) : null
-      }
+      // The bell is now the only way to Alerts and Exceptions — both left the
+      // rail, because both are feeds of things that have already asked for
+      // attention and this button is that ask. So the footer has to name them
+      // properly.
+      //
+      // It used to be one button reading "Open the full alert log" that sent a
+      // receiving desk to /fc/exceptions, which is a different page — and
+      // there is no /fc/alerts route for it to have meant instead. A label
+      // that names one page and opens another is the kind of thing a person
+      // stops trusting the whole screen over.
+      footer={footerLinks.length ? (
+        <div className="stack gap-8" style={{ width: '100%' }}>
+          {footerLinks.map((link) => (
+            <Button key={link.to} variant="secondary" size="sm" block to={link.to} onClick={onClose}>
+              {link.label}
+              {link.count ? <span className="nav-count is-alert" style={{ marginLeft: 8 }}>{link.count}</span> : null}
+            </Button>
+          ))}
+        </div>
+      ) : null}
     >
       {items.length === 0 ? (
         <EmptyState icon="bell" title="No notifications yet" description="Delay predictions, document problems and arrival updates land here as they happen." />

@@ -33,9 +33,14 @@ export const VENDOR_NAV = [
   // recorded backend telemetry rather than the browser simulation.
   { to: '/vendor/appointments', label: 'Dock appointments', icon: 'calendar' },
   { to: '/vendor/documents', label: 'Documents', icon: 'file' },
-  { to: '/vendor/alerts', label: 'Alerts', icon: 'bell', badge: 'alerts' },
+  // Alerts and Exceptions are reached from the bell, not the rail.
+  //
+  // Both are feeds of things that have already asked for attention, and the
+  // top bar's notification button is that ask — it carries the unread count on
+  // every screen and opens the same rows. A rail slot beside it was a second
+  // door onto one room, and it cost two of the six places that decide what
+  // this product looks like it is for. The drawer's footer links to both.
   { more: true },
-  { to: '/vendor/exceptions', label: 'Exceptions', icon: 'alert' },
   { to: '/vendor/carriers', label: 'Carriers & vehicles', icon: 'package' },
   { to: '/vendor/drivers', label: 'Drivers', icon: 'users' },
   { to: '/vendor/analytics', label: 'Analytics', icon: 'chart' },
@@ -50,11 +55,9 @@ export const FC_NAV = [
   // 'Appointment requests' did not fit the rail and rendered as
   // "Appointment reque…", which is worse than the shorter true name.
   { to: '/fc/appointments', label: 'Appointments', icon: 'calendar', badge: 'requests' },
+  // Exceptions is behind the bell here too, and its open count goes with it
+  // onto the drawer's footer button — see NotificationDrawer.
   { more: true },
-  // Badged, and therefore the reason the "More" summary carries a count of its
-  // own: burying a number a receiving desk is meant to act on would trade one
-  // usability problem for a worse one.
-  { to: '/fc/exceptions', label: 'Exceptions', icon: 'alert', badge: 'exceptions' },
   { to: '/fc/vendors', label: 'Vendor performance', icon: 'users' },
   { to: '/fc/analytics', label: 'Analytics', icon: 'chart' },
 ]
@@ -72,10 +75,13 @@ export const DRIVER_TABS = [
 export const EXTRA_DESTINATIONS = {
   [PORTALS.VENDOR]: [
     { to: '/vendor/shipments/new', label: 'Create a shipment', icon: 'plus' },
+    { to: '/vendor/alerts', label: 'Alerts', icon: 'bell' },
+    { to: '/vendor/exceptions', label: 'Exceptions', icon: 'alert' },
     { to: '/vendor/trips', label: 'Live trips', icon: 'navigation' },
     { to: '/vendor/settings', label: 'Settings', icon: 'settings' },
   ],
   [PORTALS.FC]: [
+    { to: '/fc/exceptions', label: 'Exceptions', icon: 'alert' },
     { to: '/fc/settings', label: 'Settings', icon: 'settings' },
     { to: '/fc/settings', label: 'Dock configuration', icon: 'dock' },
   ],
