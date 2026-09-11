@@ -1,0 +1,18 @@
+-- Make the seeded demo driver bookable on databases that already exist.
+--
+-- DataSeeder marks every fourth driver unavailable and ramesh@fleet.example is
+-- driver-1, index 0 — so the one driver the scripted demo needs was the one the
+-- booking form filtered out. The form is right to filter: it lists available
+-- drivers only.
+--
+-- The seeder was fixed, and that fixes nothing already deployed: it skips
+-- entirely when vendors exist ("Database already populated — skipping seed"),
+-- so a long-lived database keeps the row it was first given however many times
+-- the application is redeployed. Seed corrections have to arrive as migrations
+-- or they only ever reach a fresh install.
+--
+-- Narrow on purpose. Every other driver's availability is left exactly as it
+-- is, including the other three the pattern marks unavailable — an unavailable
+-- driver is a real state worth demonstrating, and this is not an excuse to
+-- flatten it.
+UPDATE drivers SET available = true WHERE id = 'driver-1';
