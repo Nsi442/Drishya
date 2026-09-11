@@ -186,6 +186,24 @@ public class SecurityConfig {
                                 "/api/fc/shipments/*/gate-out", "/api/fc/shipments/*/grn")
                         .hasRole("FC")
 
+                        // So does the dock, and that is the point of the whole
+                        // arrival notice. Booking agrees a SLOT with the vendor;
+                        // which BAY a vehicle stands on is the receiving desk's
+                        // call, made against a yard only they can see.
+                        //
+                        // This rule was missing entirely. /dock and the
+                        // appointment writes fell through to "authenticated", so
+                        // a vendor — or a driver — could put a consignment on any
+                        // bay at any site. A 200 on someone else's yard is not a
+                        // feature nobody used; it is a hole nobody had probed.
+                        .requestMatchers(HttpMethod.PATCH, "/api/shipments/*/dock")
+                        .hasRole("FC")
+                        .requestMatchers(HttpMethod.POST, "/api/appointments")
+                        .hasRole("FC")
+                        .requestMatchers(HttpMethod.PATCH, "/api/appointments/*/reschedule",
+                                "/api/appointments/*/decision")
+                        .hasRole("FC")
+
                         // Everything else needs a valid token and nothing more.
                         .anyRequest().authenticated())
 

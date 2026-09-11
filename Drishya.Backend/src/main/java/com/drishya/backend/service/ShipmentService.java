@@ -1,5 +1,6 @@
 package com.drishya.backend.service;
 
+import com.drishya.backend.domain.Dock;
 import com.drishya.backend.domain.Driver;
 import com.drishya.backend.domain.FulfilmentCentre;
 import com.drishya.backend.domain.GeoPoint;
@@ -12,6 +13,8 @@ import com.drishya.backend.domain.ShipmentDocument;
 import com.drishya.backend.domain.ShipmentEvent;
 import com.drishya.backend.domain.Vehicle;
 import com.drishya.backend.domain.Vendor;
+import com.drishya.backend.domain.enums.AlertSeverity;
+import com.drishya.backend.domain.enums.AlertType;
 import com.drishya.backend.domain.enums.DocumentStatus;
 import com.drishya.backend.domain.enums.Priority;
 import com.drishya.backend.domain.enums.ShipmentStatus;
@@ -19,6 +22,7 @@ import com.drishya.backend.dto.IncidentDto;
 import com.drishya.backend.dto.PageDto;
 import com.drishya.backend.dto.ShipmentDto;
 import com.drishya.backend.dto.request.Requests;
+import com.drishya.backend.repo.DockRepository;
 import com.drishya.backend.repo.DriverRepository;
 import com.drishya.backend.repo.FulfilmentCentreRepository;
 import com.drishya.backend.repo.IncidentRepository;
@@ -26,8 +30,8 @@ import com.drishya.backend.repo.ShipmentRepository;
 import com.drishya.backend.repo.VehicleRepository;
 import com.drishya.backend.repo.VendorRepository;
 import com.drishya.backend.seed.GeoUtil;
-import com.drishya.backend.service.routing.RoutePlanner;
 import com.drishya.backend.seed.Rng;
+import com.drishya.backend.service.routing.RoutePlanner;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
@@ -48,6 +52,7 @@ public class ShipmentService {
     private final VehicleRepository vehicles;
     private final DriverRepository drivers;
     private final IncidentRepository incidents;
+    private final DockRepository docks;
     private final AlertService alertService;
     private final Mapper mapper;
     private final RoutePlanner routePlanner;
@@ -55,7 +60,7 @@ public class ShipmentService {
     public ShipmentService(ShipmentRepository shipments, VendorRepository vendors,
                            FulfilmentCentreRepository centres, VehicleRepository vehicles,
                            DriverRepository drivers, IncidentRepository incidents,
-                           AlertService alertService, Mapper mapper,
+                           DockRepository docks, AlertService alertService, Mapper mapper,
                            RoutePlanner routePlanner) {
         this.shipments = shipments;
         this.vendors = vendors;
@@ -63,6 +68,7 @@ public class ShipmentService {
         this.vehicles = vehicles;
         this.drivers = drivers;
         this.incidents = incidents;
+        this.docks = docks;
         this.alertService = alertService;
         this.mapper = mapper;
         this.routePlanner = routePlanner;
@@ -265,7 +271,6 @@ public class ShipmentService {
         s.setInvoiceNo(request.invoiceNo() == null || request.invoiceNo().isBlank()
                 ? "INV/26-27/" + (4200 + sequence) : request.invoiceNo());
         s.setEwayBillNo(request.ewayBillNo());
-        s.setDockId(request.dockId());
         s.setUpdatedAt(now);
 
         s.addEvent(new ShipmentEvent(ShipmentStatus.CREATED, "Shipment booked",
@@ -382,12 +387,47 @@ public class ShipmentService {
         return mapper.toDto(shipments.save(s), true);
     }
 
+    /**
+     * The receiving desk puts a consignment on a bay, and tells the people
+     * driving to it.
+     *
+     * <p><b>This is the only way a dock is ever set.</b> Booking agrees a slot
+     * with the vendor; it does not book a bay, because a bay depends on a yard
+     * only the desk can see. The vendor used to choose one at booking and the
+     * endpoint was open to any authenticated caller, which made the decision
+     * look shared when it never was.
+     *
+     * <p>Announcing it is half the job. A vendor who cannot choose the dock
+     * still has to know which one it is, and a driver has to know where to
+     * pull in — neither of them is watching the desk's scheduler. The alert
+     * carries the shipment, so AlertService scopes one raise to the vendor by
+     * tenant, the desk by site, and the driver by the consignments on their
+     * vehicle. Three audiences, one row, no fan-out to keep in step.
+     *
+     * <p>Silent when nothing moved: re-saving the same bay is not news, and an
+     * alert feed that repeats itself is one people stop reading.
+     */
     @Transactional
     public ShipmentDto assignDock(String id, String dockId, CallerService.Caller caller) {
         Shipment s = load(id, caller);
+        String previous = s.getDockId();
         s.setDockId(dockId);
         s.setUpdatedAt(Instant.now());
-        return mapper.toDto(shipments.save(s), true);
+        Shipment saved = shipments.save(s);
+
+        if (dockId != null && !dockId.equals(previous)) {
+            String bay = docks.findById(dockId).map(Dock::getName).orElse(dockId);
+            alertService.raise(AlertType.SLOT_CHANGE, AlertSeverity.INFO,
+                    previous == null ? "Dock assigned" : "Dock changed",
+                    "%s will be received on %s at %s.".formatted(
+                            saved.getId(),
+                            bay,
+                            saved.getFulfilmentCentre() == null
+                                    ? "the fulfilment centre" : saved.getFulfilmentCentre().getName()),
+                    saved);
+        }
+
+        return mapper.toDto(saved, true);
     }
 
     @Transactional

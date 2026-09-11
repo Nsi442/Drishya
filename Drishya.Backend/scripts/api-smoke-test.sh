@@ -103,14 +103,20 @@ check "severity filter" "True" "$(curl -s -H "$AUTH" "$API/alerts?severity=criti
 check "exception status filter" "True" "$(curl -s -H "$AUTH" "$API/exceptions?fcId=fc-bhiwandi&status=open" | python3 -c "import sys,json;d=json.load(sys.stdin);print(all(e['status']=='open' for e in d))")"
 
 echo "--- appointments and conflicts ---"
+# Creating and moving an appointment is the receiving desk's, so these use the
+# FC token. They used the vendor's and passed, because the write was open to
+# any authenticated caller — a vendor could put a consignment on any bay at
+# any site. The vendor keeps the READ: it is told its dock, it does not pick it.
 checkne "appointments returned" "$(curl -s -H "$AUTH" "$API/appointments?fcId=fc-bhiwandi" | jlen "")"
+check "a vendor cannot book a dock" 403 "$(code -X PATCH $API/shipments/SHP-24001/dock -H "$AUTH" -H 'Content-Type: application/json' -d '{"dockId":"fc-bhiwandi-dock-1"}')"
+check "a vendor cannot create an appointment" 403 "$(code -X POST $API/appointments -H "$AUTH" -H 'Content-Type: application/json' -d "{\"vendorId\":\"vendor-1\",\"vendorName\":\"Test\",\"fcId\":\"fc-bhiwandi\",\"dockId\":\"fc-bhiwandi-dock-1\",\"start\":$(python3 -c "import time;print(int((time.time()+9*86400))*1000)"),\"durationMin\":60}")"
 # A window far enough out, and unique per run, so re-running the suite does
 # not collide with the booking the previous run made.
 START=$(python3 -c "import time,random;print((int(time.time()+4*86400)//3600*3600 + random.randint(200,4000)*3600)*1000)")
-A1=$(curl -s -X POST $API/appointments -H "$AUTH" -H 'Content-Type: application/json' \
+A1=$(curl -s -X POST $API/appointments -H "$FC_AUTH" -H 'Content-Type: application/json' \
   -d "{\"vendorId\":\"vendor-1\",\"vendorName\":\"Test\",\"fcId\":\"fc-bhiwandi\",\"dockId\":\"fc-bhiwandi-dock-1\",\"start\":$START,\"durationMin\":60}")
 check "appointment created as requested" "requested" "$(echo "$A1" | j "['status']")"
-check "overlapping booking is refused" 409 "$(code -X POST $API/appointments -H "$AUTH" -H 'Content-Type: application/json' \
+check "overlapping booking is refused" 409 "$(code -X POST $API/appointments -H "$FC_AUTH" -H 'Content-Type: application/json' \
   -d "{\"vendorId\":\"vendor-2\",\"vendorName\":\"Other\",\"fcId\":\"fc-bhiwandi\",\"dockId\":\"fc-bhiwandi-dock-1\",\"start\":$((START+900000)),\"durationMin\":60}")"
 checkne "conflict endpoint reports the clash" "$(curl -s -H "$AUTH" "$API/appointments/conflict?dockId=fc-bhiwandi-dock-1&start=$((START+900000))&durationMin=60" | j "['vendorName']")"
 
@@ -229,7 +235,13 @@ print((open_ or rows)[0]['id'])")
 
 check "cannot advance another tenant's shipment" 404 "$(code -X POST $API/shipments/$OTHER/advance -H "$AUTH2"   -H 'Content-Type: application/json' -d '{"status":"at_gate","label":"x"}')"
 check "cannot cancel another tenant's shipment" 404 "$(code -X POST $API/shipments/$OTHER/cancel -H "$AUTH2"   -H 'Content-Type: application/json' -d '{"reason":"x"}')"
-check "cannot dock another tenant's shipment" 404 "$(code -X PATCH $API/shipments/$OTHER/dock -H "$AUTH2"   -H 'Content-Type: application/json' -d '{"dockId":"fc-bhiwandi-dock-1"}')"
+# 403, not 404, and the difference is the point: a vendor role is now refused
+# the dock endpoint outright rather than merely failing to find someone else's
+# consignment on it. Allocating a bay is the receiving desk's, so there is no
+# tenant of its own for a vendor to be scoped to here. The site-scoping this
+# assertion used to cover is now exercised against the FC token below, which is
+# the only role that can reach the endpoint at all.
+check "a vendor role cannot dock anything" 403 "$(code -X PATCH $API/shipments/$OTHER/dock -H "$AUTH2"   -H 'Content-Type: application/json' -d '{"dockId":"fc-bhiwandi-dock-1"}')"
 check "cannot sign for another tenant's shipment" 404 "$(code -X POST $API/shipments/$OTHER/pod -H "$AUTH2"   -H 'Content-Type: application/json' -d '{"receiverName":"x","cartonsReceived":1,"photos":0}')"
 
 # A malformed body must be 400, not 500 — a 500 here previously disguised a
@@ -269,6 +281,7 @@ if [ -n "$OTHERSHIP" ]; then
   check "cannot gate in another site's vehicle" 404 "$(code -X POST $API/fc/shipments/$OTHERSHIP/gate-in -H "$FCAUTH")"
   check "cannot gate out another site's vehicle" 404 "$(code -X POST $API/fc/shipments/$OTHERSHIP/gate-out -H "$FCAUTH")"
   check "cannot receipt another site's goods" 404 "$(code -X POST $API/fc/shipments/$OTHERSHIP/grn -H "$FCAUTH"     -H 'Content-Type: application/json'     -d '{"decision":"accepted","receivedCartons":1,"damagedCartons":0,"documentsVerified":["invoice"],"note":"x"}')"
+  check "cannot dock another site's consignment" 404 "$(code -X PATCH $API/shipments/$OTHERSHIP/dock -H "$FCAUTH"     -H 'Content-Type: application/json' -d '{"dockId":"fc-bhiwandi-dock-1"}')"
 fi
 
 echo "$pass passed, $fail failed"

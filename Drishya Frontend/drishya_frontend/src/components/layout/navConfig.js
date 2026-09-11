@@ -31,8 +31,10 @@ export const VENDOR_NAV = [
   // the page, and the links to it from the Start trip card all still work —
   // it stays reachable directly, and it is still the only view drawn from
   // recorded backend telemetry rather than the browser simulation.
-  { to: '/vendor/appointments', label: 'Dock appointments', icon: 'calendar' },
   { to: '/vendor/documents', label: 'Documents', icon: 'file' },
+  // No dock entry. A vendor books a slot and is TOLD the bay; the allocation
+  // is the receiving desk's, made against a yard the vendor cannot see. The
+  // assignment arrives as an alert and shows on the consignment.
   // Alerts and Exceptions are reached from the bell, not the rail.
   //
   // Both are feeds of things that have already asked for attention, and the

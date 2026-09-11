@@ -3,9 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useDispatch, useToast } from '../../store/hooks.js'
 import { ACTIONS } from '../../store/reducer.js'
 import useDocumentTitle from '../../hooks/useDocumentTitle.js'
-import useAsync from '../../hooks/useAsync.js'
 import { createShipment } from '../../services/shipmentService.js'
-import { checkConflict } from '../../services/appointmentService.js'
 import { COMMODITIES } from '../../lib/constants.js'
 import { formatCurrency, formatNumber } from '../../lib/format.js'
 import { refData as db } from '../../services/referenceData.js'
@@ -25,7 +23,9 @@ const STEPS = [
   { key: 'route', label: 'Pickup & destination', icon: 'pin' },
   { key: 'carrier', label: 'Carrier & vehicle', icon: 'truck' },
   { key: 'documents', label: 'Documents', icon: 'file' },
-  { key: 'slot', label: 'Dock slot', icon: 'calendar' },
+  // 'Dock slot' overstated it: this step agrees a WINDOW. The bay is the
+  // receiving desk's, allocated an hour out.
+  { key: 'slot', label: 'Delivery slot', icon: 'calendar' },
   { key: 'review', label: 'Review', icon: 'checkCircle' },
 ]
 
@@ -62,7 +62,6 @@ export default function ShipmentNew() {
     ewayBillNo: '',
     slotDate: todayISO(),
     slotTime: '14:00',
-    dockId: '',
     slotNote: '',
     confirm: false,
   })
@@ -75,25 +74,15 @@ export default function ShipmentNew() {
   // See hooks/useReferenceData.js. Removing it reinstates an empty snapshot.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const vehicles = useMemo(() => db.vehicles.filter((v) => v.carrier === form.carrier), [form.carrier, refVersion])
-  // refVersion is not read in the callback and that is deliberate: it is the
-  // signal that refData has filled, which is invisible to React otherwise.
-  // See hooks/useReferenceData.js. Removing it reinstates an empty snapshot.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const docks = useMemo(() => db.docks.filter((d) => d.fcId === form.fcId), [form.fcId, refVersion])
   const fc = db.fulfilmentCentres.find((f) => f.id === form.fcId)
   const vendor = db.vendors.find((v) => v.id === form.vendorId)
   const vehicle = db.vehicles.find((v) => v.id === form.vehicleId)
   const driver = db.drivers.find((d) => d.id === form.driverId)
 
   const slotStart = useMemo(() => new Date(`${form.slotDate}T${form.slotTime}:00`), [form.slotDate, form.slotTime])
-  // The clash check is a request now, so it is fetched rather than computed.
-  // The API repeats the same check on the write — two vendors can be booking
-  // the same bay at the same moment, and only the server sees both.
-  const conflictQuery = useAsync(
-    () => (form.dockId ? checkConflict(form.dockId, slotStart, 60) : Promise.resolve(null)),
-    [form.dockId, slotStart.getTime()],
-  )
-  const conflict = conflictQuery.data
+  // The bay clash check went with the picker. Nothing on this screen can clash
+  // any more: a slot is a request, and the desk resolves bay contention when it
+  // allocates — with the whole yard in view, which this form never had.
 
   const validate = (index) => {
     const next = {}
@@ -118,8 +107,6 @@ export default function ShipmentNew() {
       else if (!/^\d{10,15}$/.test(form.ewayBillNo.trim())) next.ewayBillNo = 'An e-way bill number is 12 digits'
     }
     if (index === 4) {
-      if (!form.dockId) next.dockId = 'Choose which dock to request'
-      if (conflict) next.dockId = `That window clashes with ${conflict.vendorName}. Pick another slot or dock.`
       if (slotStart.getTime() < Date.now()) next.slotTime = 'The slot must be in the future'
     }
     if (index === 5 && !form.confirm) next.confirm = 'Confirm the details are correct before booking'
@@ -152,7 +139,7 @@ export default function ShipmentNew() {
       })
       dispatch({ type: ACTIONS.SHIPMENTS_UPSERT, payload: created })
       toast.success(`${created.id} booked`, {
-        description: `Dock slot requested at ${fc.name}. You will be told the moment it is confirmed.`,
+        description: `Slot requested at ${fc.name}. The receiving desk assigns a dock nearer the time, and you will be told which.`,
         to: `/vendor/shipments/${created.id}`,
         actionLabel: 'Open shipment',
       })
@@ -247,7 +234,7 @@ export default function ShipmentNew() {
                     <DatePicker label="Pickup date" value={form.pickupDate} onChange={(v) => set({ pickupDate: v })} min={todayISO()} error={errors.pickupDate} required />
                     <Input label="Pickup time" type="time" value={form.pickupTime} onChange={(e) => set({ pickupTime: e.target.value })} required />
                   </div>
-                  <Select label="Destination fulfilment centre" value={form.fcId} onChange={(e) => set({ fcId: e.target.value, dockId: '' })} options={db.fulfilmentCentres.map((f) => ({ value: f.id, label: `${f.name} — ${f.city}` }))} error={errors.fcId} required />
+                  <Select label="Destination fulfilment centre" value={form.fcId} onChange={(e) => set({ fcId: e.target.value })} options={db.fulfilmentCentres.map((f) => ({ value: f.id, label: `${f.name} — ${f.city}` }))} error={errors.fcId} required />
                   <Callout tone="info" title="Lane">
                     {vendor.city} → {fc.city}. Recent consignments on this lane have averaged{' '}
                     {Math.round(
@@ -298,7 +285,7 @@ export default function ShipmentNew() {
                   </div>
                   <FileDrop label="Supporting documents" files={files} onChange={setFiles} hint="LR copy, packing list, GST declaration. Validated against the invoice before gate-in." />
                   <Callout tone="info" title="What gets checked">
-                    E-way bill validity against the requested dock slot, consignee GSTIN against {fc.name}, and the
+                    E-way bill validity against the requested slot, consignee GSTIN against {fc.name}, and the
                     carton count against the advance shipping notice. Anything that fails is flagged here, not at the gate.
                   </Callout>
                 </>
@@ -310,24 +297,16 @@ export default function ShipmentNew() {
                     <DatePicker label="Requested slot date" value={form.slotDate} onChange={(v) => set({ slotDate: v })} min={todayISO()} required />
                     <Input label="Slot start" type="time" value={form.slotTime} onChange={(e) => set({ slotTime: e.target.value })} error={errors.slotTime} required hint="One-hour window" />
                   </div>
-                  <Select
-                    label="Preferred dock"
-                    value={form.dockId}
-                    onChange={(e) => set({ dockId: e.target.value })}
-                    placeholder="Choose a dock"
-                    options={docks.map((d) => ({ value: d.id, label: `${d.name} — ${d.type}, up to ${d.maxVehicleLengthFt} ft` }))}
-                    error={errors.dockId}
-                    required
-                  />
-                  {conflict ? (
-                    <Callout tone="warn" title="That window is already taken">
-                      {conflict.vendorName} holds {new Date(conflict.start).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} on this dock. Choose another time or dock — the request will be rejected otherwise.
-                    </Callout>
-                  ) : form.dockId ? (
-                    <Callout tone="success" title="That window is free">
-                      No clash on {docks.find((d) => d.id === form.dockId)?.name}. The fulfilment centre still has to confirm the booking.
-                    </Callout>
-                  ) : null}
+                  {/* No dock picker. A booking agrees a SLOT; which bay the
+                      vehicle stands on is decided by the receiving desk against
+                      a yard this screen cannot see, an hour before arrival.
+                      Choosing one here was a decision the vendor never actually
+                      held — the desk reassigned it anyway — and it is the whole
+                      point of the arrival notice that it does. */}
+                  <Callout tone="info" title="The fulfilment centre assigns the bay">
+                    You are booking a one-hour window. The receiving desk allocates a dock against its
+                    yard about an hour before arrival, and you and the driver are both told which one.
+                  </Callout>
                   <Textarea label="Note to the fulfilment centre" value={form.slotNote} onChange={(e) => set({ slotNote: e.target.value })} rows={3} placeholder="Driver will need a tail-lift; no forklift on this vehicle." />
                 </>
               ) : null}
@@ -351,7 +330,6 @@ export default function ShipmentNew() {
                     <DataPoint label="Invoice" value={form.invoiceNo} mono />
                     <DataPoint label="E-way bill" value={form.ewayBillNo} mono />
                     <DataPoint label="Requested slot" value={slotStart.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })} />
-                    <DataPoint label="Dock" value={docks.find((d) => d.id === form.dockId)?.name ?? '—'} />
                   </div>
 
                   <div>
@@ -394,7 +372,7 @@ export default function ShipmentNew() {
             <DataPoint label="Driver" value={driver?.name ?? 'Not assigned'} />
             <hr className="divider" />
             <DataPoint label="Documents attached" value={`${(form.invoiceNo ? 1 : 0) + (form.ewayBillNo ? 1 : 0) + files.length}`} />
-            <DataPoint label="Requested slot" value={form.dockId ? slotStart.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : 'Not requested'} />
+            <DataPoint label="Requested slot" value={slotStart.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })} />
 
             <Callout tone="neutral" icon="info">
               A booked shipment stays editable until the driver marks it loaded. After that, changes have to go through

@@ -33,6 +33,7 @@ import {
   RouteSourceTag,
   ShipmentBreadcrumb,
 } from '../../components/shipment/ShipmentParts.jsx'
+import { dockName } from '../../services/referenceData.js'
 
 export default function ShipmentDetail() {
   const { id } = useParams()
@@ -174,9 +175,6 @@ export default function ShipmentDetail() {
             <LiveIndicator paused={state.ui.livePaused || !state.ui.liveEnabled} />
             <Button variant="secondary" icon="phone" href={`tel:${shipment.driverPhone.replace(/\s/g, '')}`}>
               Call driver
-            </Button>
-            <Button variant="secondary" icon="calendar" to="/vendor/appointments">
-              Dock slot
             </Button>
             {shipment.status === 'created' ? (
               <Button variant="danger-soft" icon="x" onClick={() => setConfirmCancel(true)}>
@@ -347,7 +345,7 @@ export default function ShipmentDetail() {
             <CardBody className="stack gap-12">
               <DataPoint label="Fulfilment centre" value={shipment.fcName} />
               <DataPoint label="Booked slot" value={`${formatDateTime(shipment.slotStart)} – ${new Date(shipment.slotEnd).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`} />
-              <DataPoint label="Assigned dock" value={shipment.dockId ? shipment.dockId.split('-').slice(-2).join(' ').replace('dock', 'Dock') : 'Not yet assigned'} />
+              <DataPoint label="Assigned dock" value={dockName(shipment.dockId) ?? (shipment.dockId ? shipment.dockId : 'Not yet assigned')} />
               {shipment.gateInAt ? <DataPoint label="Gate-in" value={formatDateTime(shipment.gateInAt)} /> : null}
               {shipment.gateOutAt ? <DataPoint label="Gate-out" value={formatDateTime(shipment.gateOutAt)} /> : null}
             </CardBody>

@@ -19,6 +19,7 @@ import ShipmentMap from '../../components/map/ShipmentMap.jsx'
 import Timeline from '../../components/shipment/Timeline.jsx'
 import { TripLeg } from './DriverToday.jsx'
 import './driver.css'
+import { dockName } from '../../services/referenceData.js'
 
 export default function TripDetail() {
   const { id } = useParams()
@@ -167,7 +168,7 @@ export default function TripDetail() {
             <DataPoint label="Commodity" value={shipment.commodity} />
             <DataPoint label="Reference" value={shipment.reference} mono />
             <DataPoint label="Dock slot" value={formatTime(shipment.slotStart)} />
-            <DataPoint label="Dock" value={shipment.dockId ? shipment.dockId.split('-').slice(-2).join(' ').replace('dock', 'Dock') : 'On arrival'} />
+            <DataPoint label="Dock" value={dockName(shipment.dockId) ?? (shipment.dockId ? shipment.dockId : 'Not yet assigned')} />
           </div>
         </CardBody>
       </Card>
