@@ -70,10 +70,17 @@ export default function DriverDocuments() {
         />
       ) : null}
 
-      <Callout tone="success" icon="download" title="Available offline">
-        All four documents for {current.id} are stored on this phone. They open at the gate with no signal.
-      </Callout>
+      {/* No "available offline" banner.
 
+          It claimed the documents were stored on the phone and would open at
+          the gate with no signal. Nothing in this app writes to the device —
+          no localStorage, no IndexedDB, no cache; the only mention of device
+          storage in the codebase is the comment explaining the token is
+          deliberately NOT kept there. A driver reading a green tick and then
+          arriving at a gate with no signal is the worst way to find that out.
+
+          It also said "All four documents" as a literal, directly above the
+          list that renders however many there actually are. */}
       {problems.length ? (
         <Callout tone="danger" title={`${problems.length} document${problems.length > 1 ? 's' : ''} will be questioned at the gate`}>
           {problems.map((d) => DOC_TYPES[d.type]).join(', ')}. Call dispatch before you arrive.
