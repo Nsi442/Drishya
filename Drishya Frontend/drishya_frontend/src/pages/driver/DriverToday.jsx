@@ -13,6 +13,7 @@ import EmptyState from '../../components/ui/EmptyState.jsx'
 import { DataPoint, Callout } from '../../components/ui/Misc.jsx'
 import { SkeletonCards } from '../../components/ui/Skeleton.jsx'
 import './driver.css'
+import useNow from '../../hooks/useNow.js'
 
 function TripLeg({ shipment, compact = false }) {
   return (
@@ -59,8 +60,47 @@ export default function DriverToday() {
     return (active.length ? active : mine).sort((a, b) => a.promisedAt - b.promisedAt)
   }, [shipments, user])
 
+  // A clock held in state rather than Date.now() at render: day boundaries are
+  // read twice below, and a component that reads the wall clock while
+  // rendering can group a trip under Today and label it Tomorrow in the same
+  // pass. Ten minutes is ample for a date boundary.
+  const now = useNow(600000)
+
   const [next, ...rest] = trips
   const done = trips.filter((s) => s.status === 'delivered').length
+
+  // Which of them are genuinely today.
+  const todayCount = useMemo(() => {
+    const end = new Date(now).setHours(23, 59, 59, 999)
+    return trips.filter((s) => (s.promisedAt ?? 0) <= end).length
+  }, [trips, now])
+
+  // The list below the first card was headed "Later today" whatever the date,
+  // so a consignment booked for two days' time sat under a heading saying it
+  // was due in a few hours. A driver scanning for the job they just picked up
+  // reads that heading and concludes it is not there.
+  const groups = useMemo(() => {
+    const startOfDay = (ms) => new Date(ms).setHours(0, 0, 0, 0)
+    const today = startOfDay(now)
+    const out = []
+    for (const trip of rest) {
+      const day = startOfDay(trip.promisedAt ?? now)
+      const days = Math.round((day - today) / 86400000)
+      const label =
+        days <= 0
+          ? 'Later today'
+          : days === 1
+            ? 'Tomorrow'
+            : new Date(day).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+      const last = out[out.length - 1]
+      if (last && last.label === label) {
+        last.trips.push(trip)
+      } else {
+        out.push({ label, trips: [trip] })
+      }
+    }
+    return out
+  }, [rest, now])
 
   if (loading) {
     return (
@@ -74,11 +114,15 @@ export default function DriverToday() {
     <div className="stack gap-16">
       <div className="row between gap-8">
         <div>
+          {/* "N trips today" counted every open consignment the driver had,
+              including ones whose slot is days away. Say how many are actually
+              today, and keep the rest as what they are: assigned, not due. */}
           <h2 className="t-lg fw-600 c-strong">
-            {trips.length} trip{trips.length === 1 ? '' : 's'} today
+            {todayCount} trip{todayCount === 1 ? '' : 's'} today
           </h2>
           <p className="t-sm c-muted">
             {done} delivered · {trips.length - done} to go
+            {trips.length - todayCount > 0 ? ` · ${trips.length - todayCount} later` : ''}
           </p>
         </div>
         {queue.pending ? (
@@ -146,11 +190,11 @@ export default function DriverToday() {
             </article>
           ) : null}
 
-          {rest.length ? (
-            <>
-              <p className="eyebrow">Later today</p>
+          {groups.map((group) => (
+            <div key={group.label} className="stack gap-12">
+              <p className="eyebrow">{group.label}</p>
               <div className="stack gap-12">
-                {rest.map((trip) => (
+                {group.trips.map((trip) => (
                   <Link key={trip.id} to={`/driver/trip/${trip.id}`} className="trip-card">
                     <div className="row between gap-8">
                       <span className="mono fw-600 c-strong">{trip.id}</span>
@@ -171,8 +215,8 @@ export default function DriverToday() {
                   </Link>
                 ))}
               </div>
-            </>
-          ) : null}
+            </div>
+          ))}
         </>
       )}
 

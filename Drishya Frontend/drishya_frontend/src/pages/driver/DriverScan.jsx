@@ -25,7 +25,23 @@ export default function DriverScan() {
   const [error, setError] = useState(null)
 
   const shipments = selectShipments(state)
-  const recent = useMemo(() => shipments.filter((s) => s.status !== 'delivered' && s.status !== 'cancelled').slice(0, 4), [shipments])
+  // Every open consignment, not the first four.
+  //
+  // This was .slice(0, 4), and the store's order is not the driver's — a
+  // consignment booked minutes ago sorted behind four older ones and simply
+  // was not on the list. A driver looking for the job they were just given,
+  // on the screen whose entire purpose is finding a consignment, could not
+  // find it. There are a handful of open trips at a time; a cap bought
+  // nothing and cost exactly the case it matters in.
+  //
+  // Soonest first, so the one being loaded now is at the top.
+  const recent = useMemo(
+    () =>
+      shipments
+        .filter((s) => s.status !== 'delivered' && s.status !== 'cancelled')
+        .sort((a, b) => (a.promisedAt ?? 0) - (b.promisedAt ?? 0)),
+    [shipments],
+  )
 
   const resolve = (value) => {
     const q = value.trim().toUpperCase()
