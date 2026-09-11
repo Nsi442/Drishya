@@ -315,7 +315,12 @@ public class DataSeeder {
             driver.setLicenceExpiry(now.plus(60L + i * 17L, ChronoUnit.DAYS));
             driver.setRating(Math.round((3.6 + ((i * 7) % 14) / 10.0) * 10) / 10.0);
             driver.setTripsCompleted(40 + ((i * 13) % 200));
-            driver.setAvailable(i % 4 != 0);
+            // driver-1 is the seeded demo login (ramesh@fleet.example), so he
+            // has to be bookable. The pattern below marks every fourth driver
+            // unavailable, and he is index 0 — so the one driver the scripted
+            // demo needs was the one driver the booking form filtered out, and
+            // the form was right to: it only lists available drivers.
+            driver.setAvailable(i == 0 || i % 4 != 0);
             driver.setLanguage(i % 3 == 0 ? "hi" : "en");
             driver.setVehicle(vehicleList.get(i % vehicleList.size()));
             saved.add(drivers.save(driver));

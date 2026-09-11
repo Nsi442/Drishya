@@ -169,17 +169,28 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/shipments/*/asn",
                                 "/api/v1/shipments/*/asn/check")
                         .hasAnyRole("VENDOR_ADMIN", "DISPATCHER")
+                        // Starting the journey is the DRIVER's, and that is a
+                        // change of meaning rather than a widening. The vendor
+                        // books and dispatches; the person who actually rolls
+                        // is the one who says the trip has begun, and they are
+                        // scoped to the consignments on their own vehicle.
+                        //
+                        // The vendor roles stay because a dispatcher still has
+                        // to be able to start one for a driver who cannot —
+                        // a dead phone at the gate should not strand a load.
+                        // The UI puts the control in the driver's hands; this
+                        // is the override behind it.
                         .requestMatchers(HttpMethod.POST, "/api/v1/trips/from-shipment/**")
-                        .hasAnyRole("VENDOR_ADMIN", "DISPATCHER")
+                        .hasAnyRole("DRIVER", "VENDOR_ADMIN", "DISPATCHER")
 
                         // Starting and stopping a simulated vehicle is dispatch,
                         // not telemetry. Both verbs are listed: a DELETE left
                         // off the list falls through to "authenticated", and a
                         // driver's token could park the vendor's vehicle.
                         .requestMatchers(HttpMethod.POST, "/api/v1/trips/*/simulation")
-                        .hasAnyRole("VENDOR_ADMIN", "DISPATCHER")
+                        .hasAnyRole("DRIVER", "VENDOR_ADMIN", "DISPATCHER")
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/trips/*/simulation")
-                        .hasAnyRole("VENDOR_ADMIN", "DISPATCHER")
+                        .hasAnyRole("DRIVER", "VENDOR_ADMIN", "DISPATCHER")
 
                         // Receiving actions belong to the fulfilment centre desk.
                         .requestMatchers(HttpMethod.POST, "/api/fc/shipments/*/gate-in",

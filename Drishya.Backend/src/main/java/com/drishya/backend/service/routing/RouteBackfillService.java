@@ -79,12 +79,12 @@ public class RouteBackfillService {
      * done are no longer SYNTHETIC.
      */
     public Result backfill(int limit) {
-        List<String> ids = shipments.findIdsWithSyntheticRoute(PageRequest.of(0, Math.max(1, limit)));
+        List<String> ids = shipments.findIdsNeedingRoute(RoutePlanner.ROUTE_VERSION, PageRequest.of(0, Math.max(1, limit)));
         if (ids.isEmpty()) {
             return new Result(0, 0, 0, List.of());
         }
 
-        log.info("Re-routing {} consignment(s) that still have a drawn route", ids.size());
+        log.info("Re-routing {} consignment(s) with a drawn or out-of-date route", ids.size());
 
         int rerouted = 0;
         int unchanged = 0;
@@ -152,6 +152,9 @@ public class RouteBackfillService {
         s.setRoute(plan.points());
         s.setDistanceKm((int) Math.round(plan.distanceKm()));
         s.setRouteSource(RouteSource.ROAD);
+        // Stamped with the generation that produced it, or this row is selected
+        // again on the next cycle and the job never finishes.
+        s.setRouteVersion(RoutePlanner.ROUTE_VERSION);
         shipments.save(s);
 
         log.info("{} re-routed onto {} km of road over {} points",

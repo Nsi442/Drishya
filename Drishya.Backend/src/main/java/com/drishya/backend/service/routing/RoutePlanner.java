@@ -43,13 +43,27 @@ public class RoutePlanner {
     /**
      * Beyond this many points the geometry is thinned.
      *
-     * <p>OSRM's "simplified" overview is already sparse, but a 1,200 km lane
-     * still comes back with several hundred points, and every one of them is a
-     * row in shipment_route and a coordinate in every ShipmentDto that carries
-     * the route. A few hundred is far more than a map at country zoom can
-     * resolve.
+     * <p>The request now asks for the FULL carriageway geometry, which for a
+     * long lane is tens of thousands of points — every one a row in
+     * shipment_route and a coordinate in any ShipmentDto carrying the route.
+     * The cap is what keeps that bounded.
+     *
+     * <p>Raised from 400 when the request changed. At 400 a 1,240 km lane got
+     * a point every 3 km, which is a straight line through every town on it.
+     * The reduction is shape-aware now, so the extra points land on the bends
+     * that need them rather than being spread evenly down a motorway.
      */
-    private static final int MAX_POINTS = 400;
+    private static final int MAX_POINTS = 800;
+
+    /**
+     * The generation of routing request this build makes.
+     *
+     * <p>Bumped whenever a change makes previously stored geometry worse than
+     * what a fresh fetch would give — so the backfill can find those rows and
+     * redo them. 2 is OSRM overview=full reduced by Douglas-Peucker; 1 was
+     * overview=simplified thinned by even stride.
+     */
+    public static final int ROUTE_VERSION = 2;
 
     /** A route this much longer than the straight line is not a road. */
     private static final double IMPLAUSIBLE_DETOUR_FACTOR = 4.0;
