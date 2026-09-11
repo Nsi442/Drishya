@@ -23,13 +23,44 @@ const STEPS = [
   { key: 'route', label: 'Pickup & destination', icon: 'pin' },
   { key: 'carrier', label: 'Carrier & vehicle', icon: 'truck' },
   { key: 'documents', label: 'Documents', icon: 'file' },
-  // 'Dock slot' overstated it: this step agrees a WINDOW. The bay is the
-  // receiving desk's, allocated an hour out.
-  { key: 'slot', label: 'Delivery slot', icon: 'calendar' },
+  // No separate slot step. It asked for two fields and a note, which is not a
+  // page's worth, and it separated the delivery window from the pickup time by
+  // three screens — the two halves of one decision. They are together on step
+  // two now, which is also where a person is already thinking about timing.
   { key: 'review', label: 'Review', icon: 'checkCircle' },
 ]
 
-const todayISO = () => new Date().toISOString().slice(0, 10)
+// The LOCAL date, not the UTC one.
+//
+// toISOString() converts to UTC first, so in IST — every site in this system —
+// a booking made between midnight and 05:30 got yesterday's date, both as the
+// default and as the picker's `min`, which then refused the date the person
+// actually wanted.
+const isoDate = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+const todayISO = () => isoDate(new Date())
+
+/**
+ * A sensible first offer for the pickup, and a slot after it.
+ *
+ * The form used to open with today at 09:00 and a slot at 14:00, which is
+ * invalid for anyone booking after ten in the morning: the first thing the
+ * vendor saw was their own form telling them the pickup was in the past. A
+ * default that is wrong more often than it is right is not a default.
+ *
+ * Next whole hour at least an hour out, and the slot a working day later —
+ * near enough to the lane times on this network to be a real proposal rather
+ * than a placeholder.
+ */
+function defaultTimes(now = new Date()) {
+  const pickup = new Date(now.getTime() + 60 * 60 * 1000)
+  pickup.setMinutes(0, 0, 0)
+  const slot = new Date(pickup.getTime() + 20 * 60 * 60 * 1000)
+  slot.setMinutes(0, 0, 0)
+  const hhmm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  return { pickupDate: isoDate(pickup), pickupTime: hhmm(pickup), slotDate: isoDate(slot), slotTime: hhmm(slot) }
+}
 
 export default function ShipmentNew() {
   useDocumentTitle('Create a shipment')
@@ -51,8 +82,7 @@ export default function ShipmentNew() {
     priority: 'normal',
     notes: '',
     vendorId: db.vendors[0].id,
-    pickupDate: todayISO(),
-    pickupTime: '09:00',
+    ...defaultTimes(),
     fcId: db.fulfilmentCentres[0].id,
     carrier: db.carriers[0].name,
     vehicleId: '',
@@ -60,8 +90,7 @@ export default function ShipmentNew() {
     sealNumber: '',
     invoiceNo: '',
     ewayBillNo: '',
-    slotDate: todayISO(),
-    slotTime: '14:00',
+
     slotNote: '',
     confirm: false,
   })
@@ -96,6 +125,11 @@ export default function ShipmentNew() {
       if (!form.fcId) next.fcId = 'Choose the destination fulfilment centre'
       const pickup = new Date(`${form.pickupDate}T${form.pickupTime}:00`)
       if (pickup.getTime() < Date.now() - 3600000) next.pickupDate = 'Pickup cannot be in the past'
+      // The slot moved onto this step, so its rule did too — and it has to be
+      // after the pickup, not merely in the future: a window that opens before
+      // the vehicle is loaded is a booking nobody can keep.
+      if (slotStart.getTime() < Date.now()) next.slotTime = 'The slot must be in the future'
+      else if (slotStart.getTime() < pickup.getTime()) next.slotTime = 'The slot cannot be before the pickup'
     }
     if (index === 2) {
       if (!form.vehicleId) next.vehicleId = 'Assign a vehicle'
@@ -106,10 +140,7 @@ export default function ShipmentNew() {
       if (!form.ewayBillNo.trim()) next.ewayBillNo = 'The e-way bill number is required before gate-in'
       else if (!/^\d{10,15}$/.test(form.ewayBillNo.trim())) next.ewayBillNo = 'An e-way bill number is 12 digits'
     }
-    if (index === 4) {
-      if (slotStart.getTime() < Date.now()) next.slotTime = 'The slot must be in the future'
-    }
-    if (index === 5 && !form.confirm) next.confirm = 'Confirm the details are correct before booking'
+    if (index === 4 && !form.confirm) next.confirm = 'Confirm the details are correct before booking'
 
     setErrors(next)
     return Object.keys(next).length === 0
@@ -121,7 +152,7 @@ export default function ShipmentNew() {
   }
 
   const onSubmit = async () => {
-    if (!validate(5)) return
+    if (!validate(4)) return
     setSubmitting(true)
     try {
       const created = await createShipment({
@@ -155,7 +186,7 @@ export default function ShipmentNew() {
     <div className="page">
       <PageHeader
         title="Create a shipment"
-        subtitle="Six steps. Everything here is checked against the fulfilment centre's rules before the vehicle leaves."
+        subtitle="Five steps. Everything here is checked against the fulfilment centre's rules before the vehicle leaves."
         actions={
           <Button variant="ghost" to="/vendor/shipments" icon="x">
             Discard
@@ -235,6 +266,25 @@ export default function ShipmentNew() {
                     <Input label="Pickup time" type="time" value={form.pickupTime} onChange={(e) => set({ pickupTime: e.target.value })} required />
                   </div>
                   <Select label="Destination fulfilment centre" value={form.fcId} onChange={(e) => set({ fcId: e.target.value })} options={db.fulfilmentCentres.map((f) => ({ value: f.id, label: `${f.name} — ${f.city}` }))} error={errors.fcId} required />
+                  <div className="grid grid-2">
+                    <DatePicker label="Requested slot date" value={form.slotDate} onChange={(v) => set({ slotDate: v })} min={todayISO()} required />
+                    <Input label="Slot start" type="time" value={form.slotTime} onChange={(e) => set({ slotTime: e.target.value })} error={errors.slotTime} required hint="One-hour window" />
+                  </div>
+                  {/* The slot is what the platform later measures against: it
+                      becomes promisedAt, which never moves, and every delay
+                      figure in the product is the gap between it and what the
+                      engine predicts. Losing this field with the step would
+                      have left promisedAt defaulting to now + 36 hours — a
+                      number nobody agreed to, measured against forever after.
+
+                      No dock picker, though. A booking agrees a SLOT; which bay
+                      the vehicle stands on is the receiving desk's, decided
+                      against a yard this screen cannot see. */}
+                  <Callout tone="info" title="The fulfilment centre assigns the bay">
+                    You are booking a one-hour window. The receiving desk allocates a dock against its
+                    yard about an hour before arrival, and you and the driver are both told which one.
+                  </Callout>
+                  <Textarea label="Note to the fulfilment centre" value={form.slotNote} onChange={(e) => set({ slotNote: e.target.value })} rows={3} placeholder="Driver will need a tail-lift; no forklift on this vehicle." />
                   <Callout tone="info" title="Lane">
                     {vendor.city} → {fc.city}. Recent consignments on this lane have averaged{' '}
                     {Math.round(
@@ -292,26 +342,6 @@ export default function ShipmentNew() {
               ) : null}
 
               {step === 4 ? (
-                <>
-                  <div className="grid grid-2">
-                    <DatePicker label="Requested slot date" value={form.slotDate} onChange={(v) => set({ slotDate: v })} min={todayISO()} required />
-                    <Input label="Slot start" type="time" value={form.slotTime} onChange={(e) => set({ slotTime: e.target.value })} error={errors.slotTime} required hint="One-hour window" />
-                  </div>
-                  {/* No dock picker. A booking agrees a SLOT; which bay the
-                      vehicle stands on is decided by the receiving desk against
-                      a yard this screen cannot see, an hour before arrival.
-                      Choosing one here was a decision the vendor never actually
-                      held — the desk reassigned it anyway — and it is the whole
-                      point of the arrival notice that it does. */}
-                  <Callout tone="info" title="The fulfilment centre assigns the bay">
-                    You are booking a one-hour window. The receiving desk allocates a dock against its
-                    yard about an hour before arrival, and you and the driver are both told which one.
-                  </Callout>
-                  <Textarea label="Note to the fulfilment centre" value={form.slotNote} onChange={(e) => set({ slotNote: e.target.value })} rows={3} placeholder="Driver will need a tail-lift; no forklift on this vehicle." />
-                </>
-              ) : null}
-
-              {step === 5 ? (
                 <div className="stack gap-16">
                   <div className="grid grid-2">
                     <DataPoint label="Reference" value={form.reference || 'Auto-generated'} />
