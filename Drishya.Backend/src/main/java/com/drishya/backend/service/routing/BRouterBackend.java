@@ -101,7 +101,7 @@ class BRouterBackend implements RoutingBackend {
             return null;
         }
 
-        return new Road(HttpRouting.thin(points, maxPoints), metres / 1000.0);
+        return new Road(HttpRouting.simplify(points, maxPoints), metres / 1000.0);
     }
 
     /**

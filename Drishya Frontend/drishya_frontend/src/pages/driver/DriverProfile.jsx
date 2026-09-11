@@ -112,13 +112,23 @@ export default function DriverProfile() {
           <div className="grow" style={{ minWidth: 0 }}>
             <p className="t-lg fw-600 c-strong">{driver.name}</p>
             <p className="t-sm c-muted">{user?.orgName}</p>
+            {/* Derived, not seeded.
+
+                These were driver.rating and driver.tripsCompleted, which the
+                seeder makes up as (3.6 + (i*7)%14/10) and 40 + (i*13)%200 —
+                arbitrary numbers presented as this person's record, directly
+                above a card that computes the same claim from their actual
+                delivered consignments. Two answers to one question, and the
+                invented one had the larger typeface. */}
             <div className="row gap-6 mt-4">
-              <Badge tone="warn" size="sm" icon="star">
-                {driver.rating.toFixed(1)}
+              <Badge tone={record.delivered ? 'success' : 'neutral'} size="sm" icon="checkCircle">
+                {formatNumber(record.delivered)} delivered
               </Badge>
-              <Badge tone="neutral" size="sm">
-                {formatNumber(driver.tripsCompleted)} trips
-              </Badge>
+              {record.delivered ? (
+                <Badge tone={record.onTimePct >= 90 ? 'success' : 'warn'} size="sm">
+                  {record.onTimePct}% on time
+                </Badge>
+              ) : null}
             </div>
           </div>
         </div>
@@ -148,10 +158,14 @@ export default function DriverProfile() {
       <Card>
         <CardHeader title={t.licence} />
         <CardBody className="stack gap-12">
-          <div className="grid grid-2 gap-12">
-            <DataPoint label="Number" value={`MH-14 ${driver.id.replace('driver-', '20260')}`} mono />
-            <DataPoint label="Expires" value={formatDate(driver.licenceExpiry)} />
-          </div>
+          {/* No licence number. There is no such field on Driver or DriverDto —
+              the one shown here was assembled in the browser from the driver's
+              id, so `driver-1` rendered as "MH-14 202601" under a heading that
+              said Licence. An invented legal identifier is the worst kind of
+              placeholder: nothing about it looks placeholder.
+
+              The expiry is real, stored, and drives the renewal warning below. */}
+          <DataPoint label="Expires" value={formatDate(driver.licenceExpiry)} />
 
           {licenceDays < 90 ? (
             <Callout tone="warn" title="Renewal due">

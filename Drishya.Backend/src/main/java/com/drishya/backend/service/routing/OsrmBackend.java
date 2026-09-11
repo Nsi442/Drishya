@@ -40,7 +40,20 @@ class OsrmBackend implements RoutingBackend {
         // other coordinate in this codebase is written, and getting either
         // backwards produces a route across the Arabian Sea rather than an
         // error, so both are converted in exactly one place: here.
-        String url = baseUrl + "/route/v1/driving/%f,%f;%f,%f?overview=simplified&geometries=geojson"
+        // overview=FULL, not simplified.
+        //
+        // "simplified" is OSRM's overview geometry, meant for a thumbnail of a
+        // route rather than for following one. Measured on the deployed site it
+        // returned a 1,242 km journey as 23 points, one of which was a single
+        // 255 km straight line — a chord across half the country, drawn on the
+        // map as though it were a road. The polyline came out 7.8% shorter than
+        // the road distance OSRM reported beside it, which is the corner-cutting
+        // showing up as arithmetic.
+        //
+        // "full" is the real carriageway geometry. It arrives as tens of
+        // thousands of points and is reduced by HttpRouting.simplify(), which
+        // drops the points a line can be drawn without instead of every nth one.
+        String url = baseUrl + "/route/v1/driving/%f,%f;%f,%f?overview=full&geometries=geojson"
                 .formatted(origin.getLng(), origin.getLat(),
                         destination.getLng(), destination.getLat());
 
@@ -68,7 +81,7 @@ class OsrmBackend implements RoutingBackend {
             return null;
         }
 
-        return new Road(HttpRouting.thin(points, maxPoints), route.distance() / 1000.0);
+        return new Road(HttpRouting.simplify(points, maxPoints), route.distance() / 1000.0);
     }
 
     // --- the wire shape OSRM answers with ---------------------------------

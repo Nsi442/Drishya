@@ -7,23 +7,22 @@ import Button from '../../components/ui/Button.jsx'
 import Icon from '../../components/ui/Icon.jsx'
 import Card, { CardHeader, CardBody } from '../../components/ui/Card.jsx'
 import Input from '../../components/ui/Input.jsx'
-import { SegmentedControl } from '../../components/ui/Tabs.jsx'
 import { StatusPill } from '../../components/ui/Badge.jsx'
-import { Callout } from '../../components/ui/Misc.jsx'
 import './driver.css'
 
-// There is no camera decoding in this build — the viewport is a real UI with a
-// working manual fallback, which is the path drivers use in bad light anyway.
+// Entering the number, or tapping a consignment. No camera.
+//
+// The camera mode was a viewfinder that decoded nothing, and its own caption
+// said so. Manual entry is the path drivers use in bad light anyway, and it is
+// the one that actually worked.
 export default function DriverScan() {
   useDocumentTitle('Scan')
   const navigate = useNavigate()
   const toast = useToast()
   const state = useAppState()
 
-  const [mode, setMode] = useState('camera')
   const [code, setCode] = useState('')
   const [error, setError] = useState(null)
-  const [scanning, setScanning] = useState(false)
 
   const shipments = selectShipments(state)
   const recent = useMemo(() => shipments.filter((s) => s.status !== 'delivered' && s.status !== 'cancelled').slice(0, 4), [shipments])
@@ -46,95 +45,53 @@ export default function DriverScan() {
     navigate(`/driver/trip/${hit.id}`)
   }
 
-  // Simulated capture — resolves to a real shipment so the flow is complete.
-  const simulateScan = () => {
-    setScanning(true)
-    setError(null)
-    setTimeout(() => {
-      setScanning(false)
-      const target = recent[0]
-      if (!target) {
-        setError('No active consignment to scan against.')
-        return
-      }
-      toast.success('Barcode read', { description: `Seal ${target.sealNumber}` })
-      navigate(`/driver/trip/${target.id}`)
-    }, 1400)
-  }
+  // No camera mode. There was a viewfinder with corner brackets, a sweeping
+  // scan line and a Capture button that decoded nothing — it waited 1.4s and
+  // opened whichever consignment happened to be first, with a caption
+  // admitting as much. A control that mimes a capability is worse than its
+  // absence: it is the one thing on this screen a person would try first.
+  //
+  // What remains does work: type or paste the number, or tap a consignment.
 
   return (
     <div className="stack gap-16">
-      <SegmentedControl
-        label="Scan mode"
-        value={mode}
-        onChange={setMode}
-        options={[
-          { value: 'camera', label: 'Camera', icon: 'camera' },
-          { value: 'manual', label: 'Type it in', icon: 'edit' },
-        ]}
-      />
-
-      {mode === 'camera' ? (
-        <>
-          <div className="scanner">
-            <div className="scanner-frame">
-              <span className="scanner-corner tl" />
-              <span className="scanner-corner tr" />
-              <span className="scanner-corner bl" />
-              <span className="scanner-corner br" />
-              {scanning ? <span className="scanner-line" /> : null}
-            </div>
-            <p className="scanner-caption">{scanning ? 'Reading…' : 'Line the barcode up inside the frame'}</p>
-          </div>
-
-          <Button variant="primary" size="xl" block icon="scan" onClick={simulateScan} loading={scanning} className="advance-btn">
-            {scanning ? 'Reading barcode…' : 'Capture'}
-          </Button>
-
-          <Callout tone="neutral" icon="info">
-            Camera decoding is not wired up in this build. Capture resolves against your active consignment so the rest
-            of the flow can be walked through, and typing the number in always works.
-          </Callout>
-        </>
-      ) : (
-        <Card>
-          <CardHeader title="Enter the number" subtitle="Consignment ID, seal number or purchase order" />
-          <CardBody>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault()
-                resolve(code)
+      <Card>
+        <CardHeader title="Enter the number" subtitle="Consignment ID, seal number or purchase order" />
+        <CardBody>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              resolve(code)
+            }}
+            className="stack gap-16"
+            noValidate
+          >
+            <Input
+              label="Number"
+              value={code}
+              onChange={(e) => {
+                setCode(e.target.value)
+                setError(null)
               }}
-              className="stack gap-16"
-              noValidate
-            >
-              <Input
-                label="Number"
-                value={code}
-                onChange={(e) => {
-                  setCode(e.target.value)
-                  setError(null)
-                }}
-                error={error}
-                placeholder="SHP-24001 or SL-482910"
-                className="mono"
-                size="lg"
-                leadIcon="search"
-                autoFocus
-                autoCapitalize="characters"
-                autoComplete="off"
-              />
-              <Button type="submit" variant="primary" size="lg" block>
-                Find consignment
-              </Button>
-            </form>
-          </CardBody>
-        </Card>
-      )}
+              error={error}
+              placeholder="SHP-24001 or SL-482910"
+              className="mono"
+              size="lg"
+              leadIcon="search"
+              autoFocus
+              autoCapitalize="characters"
+              autoComplete="off"
+            />
+            <Button type="submit" variant="primary" size="lg" block>
+              Find consignment
+            </Button>
+          </form>
+        </CardBody>
+      </Card>
 
       {recent.length ? (
         <Card>
-          <CardHeader title="Your active consignments" subtitle="Tap one instead of scanning" />
+          <CardHeader title="Your active consignments" subtitle="Tap one to open it" />
           <CardBody className="stack gap-8">
             {recent.map((s) => (
               <button key={s.id} type="button" className="doc-tile" onClick={() => navigate(`/driver/trip/${s.id}`)}>

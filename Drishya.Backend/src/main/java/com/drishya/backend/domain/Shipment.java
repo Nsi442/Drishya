@@ -107,6 +107,16 @@ public class Shipment {
     @Column(name = "route_source", nullable = false, length = 16)
     private RouteSource routeSource = RouteSource.SYNTHETIC;
 
+    /**
+     * Which generation of the routing request produced {@link #route}.
+     *
+     * <p>Not how good the road is — how good the FETCH was. A route stored by
+     * an older, coarser request is still a road; it is just drawn with too few
+     * points to be one. See RoutePlanner.ROUTE_VERSION and V11.
+     */
+    @Column(name = "route_version", nullable = false)
+    private int routeVersion = 1;
+
     @Embedded
     @AttributeOverrides({
             @AttributeOverride(name = "lat", column = @Column(name = "pos_lat")),

@@ -248,6 +248,8 @@ public class ShipmentService {
         // Recorded beside the route it describes, so a drawn distance can never
         // be mistaken for a measured one further downstream.
         s.setRouteSource(plan.source());
+        // Current by construction: it was just fetched by this build.
+        s.setRouteVersion(RoutePlanner.ROUTE_VERSION);
         s.setProgress(0);
         s.setPosition(originPoint);
         s.setDistanceKm(distanceKm);

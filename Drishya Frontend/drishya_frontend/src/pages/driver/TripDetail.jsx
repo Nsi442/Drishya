@@ -20,6 +20,7 @@ import Timeline from '../../components/shipment/Timeline.jsx'
 import { TripLeg } from './DriverToday.jsx'
 import './driver.css'
 import { dockName } from '../../services/referenceData.js'
+import TripLauncher from '../../components/shipment/TripLauncher.jsx'
 
 export default function TripDetail() {
   const { id } = useParams()
@@ -128,6 +129,17 @@ export default function TripDetail() {
           <ShipmentMap shipments={[shipment]} selectedId={shipment.id} showRoutes="all" cluster={false} height={200} className="dm-map-flush" fitKey={shipment.id} />
         </CardBody>
       </Card>
+
+      {/* Starting the journey belongs to the person making it.
+
+          This sat on the vendor's consignment page, so the platform's idea of
+          "the trip has begun" was asserted by somebody in an office while the
+          driver was the one at the gate. The dispatcher override still exists
+          in the API for a driver whose phone is dead; this is the normal way. */}
+      <TripLauncher
+        shipment={shipment}
+        onShipmentChange={(next) => dispatch({ type: ACTIONS.SHIPMENTS_UPSERT, payload: next })}
+      />
 
       <Card padded>
         <TripLeg shipment={shipment} />

@@ -54,10 +54,17 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
      *
      * <p>Cross-tenant on purpose: this is an operator's job, reachable only
      * behind the service token, never through a vendor's session.
+     *
+     * <p>Two kinds of row, one query. A SYNTHETIC route is a drawn curve that
+     * never reached a router. A route below the current version reached one,
+     * but through a request since found to be too coarse to be a road — and
+     * without this half, improving how routes are fetched would have left
+     * every consignment already booked exactly as it was.
      */
     @Query("select s.id from Shipment s where s.routeSource = "
-            + "com.drishya.backend.domain.enums.RouteSource.SYNTHETIC order by s.id")
-    List<String> findIdsWithSyntheticRoute(Pageable page);
+            + "com.drishya.backend.domain.enums.RouteSource.SYNTHETIC "
+            + "or s.routeVersion < :version order by s.id")
+    List<String> findIdsNeedingRoute(@Param("version") int version, Pageable page);
 
     /**
      * Writes only where a consignment is, and only if it is still running.
