@@ -49,9 +49,13 @@ export default function PortalShell({ nav, density = 'comfortable', homePath }) 
 
   useLiveShipments({ onEvent: onLiveEvent })
 
-  // Sidebar badge counts. Only the fulfilment centre rail shows these two, so
-  // they are only fetched for that role. Refreshed on each live tick so a new
-  // exception shows up without a reload.
+  // Badge counts for the fulfilment centre, fetched only for that role and
+  // refreshed on each live tick so a new one shows up without a reload.
+  //
+  // `requests` badges the Appointments rail link. `exceptions` no longer
+  // badges a rail link — that page moved behind the bell — and is passed to
+  // the notification drawer instead, so the count still travels with the
+  // button that opens it.
   const isFcUser = user?.role === 'fc'
   const badgeCounts = useAsync(
     () =>
@@ -71,6 +75,20 @@ export default function PortalShell({ nav, density = 'comfortable', homePath }) 
     alerts: unread,
     exceptions: badgeCounts.data?.exceptions ?? 0,
     requests: badgeCounts.data?.requests ?? 0,
+  }
+
+  // What the bell stands for. On a receiving desk the exception queue sits
+  // behind it too, so its open count is part of the number and the label says
+  // which is which.
+  const attention = {
+    count: counts.alerts + (isFcUser ? counts.exceptions : 0),
+    label: [
+      'Notifications',
+      counts.alerts ? `${counts.alerts} unread` : null,
+      isFcUser && counts.exceptions ? `${counts.exceptions} open exceptions` : null,
+    ]
+      .filter(Boolean)
+      .join(', '),
   }
 
   const closeAll = useCallback(
@@ -121,6 +139,7 @@ export default function PortalShell({ nav, density = 'comfortable', homePath }) 
 
       <div className="main">
         <Topbar
+          attention={attention}
           onOpenPalette={() => ui.set({ paletteOpen: true })}
           onOpenNotifications={() => ui.set({ notificationsOpen: true })}
           onToggleMobileNav={() => ui.set({ mobileNavOpen: !ui.mobileNavOpen })}
@@ -131,7 +150,11 @@ export default function PortalShell({ nav, density = 'comfortable', homePath }) 
         </main>
       </div>
 
-      <NotificationDrawer open={ui.notificationsOpen} onClose={() => ui.set({ notificationsOpen: false })} />
+      <NotificationDrawer
+        open={ui.notificationsOpen}
+        onClose={() => ui.set({ notificationsOpen: false })}
+        openExceptions={counts.exceptions}
+      />
       {/* Keyed on open state so each opening gets a fresh palette — no effect
           is needed to clear the previous query. */}
       <CommandPalette key={ui.paletteOpen ? 'open' : 'closed'} open={ui.paletteOpen} onClose={() => ui.set({ paletteOpen: false })} />

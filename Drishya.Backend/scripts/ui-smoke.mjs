@@ -23,7 +23,7 @@ const ROUTES = {
   vendor_admin: [
     '/vendor', '/vendor/shipments', '/vendor/shipments/new', '/vendor/shipments/:id',
     '/vendor/live-map', '/vendor/trips', '/vendor/exceptions', '/vendor/documents',
-    '/vendor/appointments', '/vendor/carriers', '/vendor/drivers', '/vendor/analytics',
+    '/vendor/carriers', '/vendor/drivers', '/vendor/analytics',
     '/vendor/alerts', '/vendor/settings',
   ],
   driver: [

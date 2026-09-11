@@ -5,11 +5,16 @@ import Icon from '../ui/Icon.jsx'
 import { StatusPill } from '../ui/Badge.jsx'
 import { useAppState, useAuth, useUI } from '../../store/hooks.js'
 import { selectShipments } from '../../store/reducer.js'
-import { navFor, EXTRA_DESTINATIONS } from './navConfig.js'
+import { destinationsFor } from './navConfig.js'
 import { refData as db } from '../../services/referenceData.js'
 import './layout.css'
 
 const MAX_PER_GROUP = 5
+// Pages get a larger cap than the record groups. The rail now shows a ranked
+// six and keeps the rest behind a disclosure, so an unfiltered palette that
+// listed only five of thirteen destinations would hide the pages this change
+// just moved off the rail — the opposite of what it is for.
+const MAX_PAGES = 12
 
 export default function CommandPalette({ open, onClose }) {
   const [query, setQuery] = useState('')
@@ -37,9 +42,9 @@ export default function CommandPalette({ open, onClose }) {
     const q = query.trim().toLowerCase()
     const role = user?.role ?? 'vendor_admin'
 
-    const pages = [...navFor(role).filter((n) => n.to), ...(EXTRA_DESTINATIONS[role] ?? [])]
+    const pages = destinationsFor(role)
       .filter((p) => !q || p.label.toLowerCase().includes(q))
-      .slice(0, MAX_PER_GROUP)
+      .slice(0, MAX_PAGES)
       .map((p) => ({ id: `page-${p.to}`, kind: 'page', icon: p.icon, label: p.label, sub: p.to, to: p.to }))
 
     const shipmentHits = !q

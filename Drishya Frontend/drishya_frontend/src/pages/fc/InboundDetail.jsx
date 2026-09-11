@@ -23,6 +23,7 @@ import ShipmentMap from '../../components/map/ShipmentMap.jsx'
 import Timeline from '../../components/shipment/Timeline.jsx'
 import SensorPanel from '../../components/shipment/SensorPanel.jsx'
 import { DocumentStrip, ConsignmentSummary, DriverVehicleCard, PODPanel } from '../../components/shipment/ShipmentParts.jsx'
+import useReferenceData from '../../hooks/useReferenceData.js'
 
 export default function InboundDetail() {
   const { id } = useParams()
@@ -45,7 +46,12 @@ export default function InboundDetail() {
 
   useDocumentTitle(shipment ? `Inbound ${shipment.id}` : 'Inbound')
 
-  const docks = useMemo(() => db.docks.filter((d) => d.fcId === fcId), [fcId])
+  const refVersion = useReferenceData()
+  // refVersion is not read in the callback and that is deliberate: it is the
+  // signal that refData has filled, which is invisible to React otherwise.
+  // See hooks/useReferenceData.js. Removing it reinstates an empty snapshot.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const docks = useMemo(() => db.docks.filter((d) => d.fcId === fcId), [fcId, refVersion])
   const occupied = useMemo(
     () => new Set(state.shipments.ids.map((sid) => state.shipments.byId[sid]).filter((s) => s?.status === 'at_dock' && s.dockId).map((s) => s.dockId)),
     [state.shipments],

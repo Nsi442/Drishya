@@ -259,9 +259,6 @@ export default function VendorShipments() {
           <Button variant="secondary" size="sm" icon="download" onClick={() => exportCSV(selectedRows)}>
             Export selection
           </Button>
-          <Button variant="secondary" size="sm" icon="calendar" to="/vendor/appointments">
-            Request dock slots
-          </Button>
           <Button variant="secondary" size="sm" icon="file" to="/vendor/documents">
             Review documents
           </Button>

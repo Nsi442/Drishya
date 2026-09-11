@@ -20,7 +20,6 @@ import LiveMap from './pages/vendor/LiveMap.jsx'
 import TripControl from './pages/vendor/TripControl.jsx'
 import ExceptionQueue from './pages/vendor/ExceptionQueue.jsx'
 import VendorDocuments from './pages/vendor/VendorDocuments.jsx'
-import VendorAppointments from './pages/vendor/VendorAppointments.jsx'
 import VendorCarriers from './pages/vendor/VendorCarriers.jsx'
 import VendorDrivers from './pages/vendor/VendorDrivers.jsx'
 import VendorAnalytics from './pages/vendor/VendorAnalytics.jsx'
@@ -76,7 +75,6 @@ export default function App() {
         <Route path="trips" element={<TripControl />} />
         <Route path="exceptions" element={<ExceptionQueue />} />
         <Route path="documents" element={<VendorDocuments />} />
-        <Route path="appointments" element={<VendorAppointments />} />
         <Route path="carriers" element={<VendorCarriers />} />
         <Route path="drivers" element={<VendorDrivers />} />
         <Route path="analytics" element={<VendorAnalytics />} />

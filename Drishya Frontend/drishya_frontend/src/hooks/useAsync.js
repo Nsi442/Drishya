@@ -28,7 +28,24 @@ export default function useAsync(fn, deps = [], { immediate = true } = {}) {
 
   const run = useCallback(async () => {
     const id = ++requestId.current
-    setState((prev) => ({ data: prev.data, status: 'loading', error: null }))
+    // A FIRST load and a BACKGROUND REFRESH are not the same state, and
+    // conflating them emptied the screen on a timer.
+    //
+    // Receiving and Yard re-run on every live tick, which is every five
+    // seconds. Both render `isLoading ? <SkeletonCards/> : <the page>`, so
+    // every five seconds the whole page — queue, detail panel and the
+    // part-filled goods-receipt form inside it — was replaced by grey blocks
+    // and then rebuilt. The form holds its counted cartons, damaged count and
+    // note in local state, so a receiving clerk lost whatever they had typed
+    // every five seconds. It reads as the page refreshing on its own.
+    //
+    // So: 'loading' means there is nothing to show yet. Once there is data,
+    // a re-run is 'refreshing' and the caller keeps rendering what it has.
+    setState((prev) => ({
+      data: prev.data,
+      status: prev.data == null ? 'loading' : 'refreshing',
+      error: null,
+    }))
     try {
       const data = await fnRef.current()
       if (!mounted.current || id !== requestId.current) return undefined
@@ -56,9 +73,14 @@ export default function useAsync(fn, deps = [], { immediate = true } = {}) {
     data: state.data,
     error: state.error,
     status: state.status,
+    // "I have nothing to show" — the only case that warrants a skeleton.
     isLoading: state.status === 'loading',
+    // "I have something to show and am checking for newer." Nothing is
+    // required to render for this; it exists so a caller that wants a quiet
+    // indicator can have one without going back to blanking the page.
+    isRefreshing: state.status === 'refreshing',
     isError: state.status === 'error',
-    isReady: state.status === 'ready',
+    isReady: state.status === 'ready' || state.status === 'refreshing',
     reload: run,
     setData: (updater) =>
       setState((prev) => ({ ...prev, data: typeof updater === 'function' ? updater(prev.data) : updater })),

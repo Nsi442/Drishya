@@ -72,7 +72,11 @@ public final class Requests {
             String ewayBillNo,
             Long pickupAt,
             Long slotStart,
-            String dockId,
+            // No dockId. A booking asks for a SLOT, never a bay — see
+            // ShipmentService.assignDock. Accepting one here let the browser
+            // author a decision that belongs to the receiving desk, and a
+            // field the server ignores is worse than one that is not there:
+            // the form still looked like it was choosing.
             String slotNote,
             List<DocumentInput> documents) {}
 
