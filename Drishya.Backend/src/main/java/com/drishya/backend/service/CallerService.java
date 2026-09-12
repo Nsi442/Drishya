@@ -3,6 +3,8 @@ package com.drishya.backend.service;
 import com.drishya.backend.domain.AppUser;
 import com.drishya.backend.domain.enums.Role;
 import com.drishya.backend.repo.AppUserRepository;
+import com.drishya.backend.repo.ShipmentRepository;
+import com.drishya.backend.repo.TripRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,9 +22,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class CallerService {
 
     private final AppUserRepository users;
+    private final ShipmentRepository shipments;
+    private final TripRepository trips;
 
-    public CallerService(AppUserRepository users) {
+    public CallerService(AppUserRepository users, ShipmentRepository shipments, TripRepository trips) {
         this.users = users;
+        this.shipments = shipments;
+        this.trips = trips;
     }
 
     /** The caller, or 401 if the token pointed at an account that is gone. */
@@ -51,6 +57,67 @@ public class CallerService {
             throw ApiException.forbidden("This account is not attached to a vendor organisation.");
         }
         return caller.tenantId();
+    }
+
+    /**
+     * The tenant to scope a trip endpoint by, for a caller acting on ONE
+     * consignment.
+     *
+     * <p><b>Why this exists.</b> Every /api/v1/trips route scopes by tenant,
+     * and a DRIVER has none — deliberately, since a driver is bounded by the
+     * vehicle they drive rather than by an organisation. So requireTenant
+     * refuses them, which was right while only a vendor could start a trip.
+     *
+     * <p>Starting the journey is the driver's now, and moving the control
+     * without moving this left the driver refused one layer below the filter
+     * chain: the security rule let them through and the controller answered
+     * 403 "not attached to a vendor organisation". The trip launcher could not
+     * even read the trip's state, so the simulation never started and nothing
+     * on the screen said why.
+     *
+     * <p>The tenant is DERIVED rather than the scoping relaxed. Every query
+     * underneath stays tenant-scoped exactly as it was; a driver simply gets
+     * the tenant of the consignment they are carrying, and only after the
+     * consignment is shown to be theirs. A driver who names someone else's
+     * consignment gets the same 403 as before.
+     */
+    @Transactional(readOnly = true)
+    public String tenantForShipment(String userId, String shipmentId) {
+        Caller caller = resolve(userId);
+        if (caller.tenantId() != null) {
+            return caller.tenantId();
+        }
+        if (caller.role() == Role.DRIVER && caller.driverId() != null) {
+            String tenant = shipments.findById(shipmentId)
+                    .filter(s -> s.getDriver() != null
+                            && caller.driverId().equals(s.getDriver().getId()))
+                    .map(s -> s.getVendor() == null ? null : s.getVendor().getId())
+                    .orElse(null);
+            if (tenant != null) {
+                return tenant;
+            }
+        }
+        throw ApiException.forbidden("This account is not attached to a vendor organisation.");
+    }
+
+    /** The same, for a route that names a trip rather than a consignment. */
+    @Transactional(readOnly = true)
+    public String tenantForTrip(String userId, String tripId) {
+        Caller caller = resolve(userId);
+        if (caller.tenantId() != null) {
+            return caller.tenantId();
+        }
+        if (caller.role() == Role.DRIVER && caller.driverId() != null) {
+            String tenant = trips.findById(tripId)
+                    .filter(t -> t.getDriver() != null
+                            && caller.driverId().equals(t.getDriver().getId()))
+                    .map(t -> t.getTenant() == null ? null : t.getTenant().getId())
+                    .orElse(null);
+            if (tenant != null) {
+                return tenant;
+            }
+        }
+        throw ApiException.forbidden("This account is not attached to a vendor organisation.");
     }
 
     /**

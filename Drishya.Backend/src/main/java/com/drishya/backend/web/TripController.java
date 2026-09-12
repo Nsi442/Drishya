@@ -74,7 +74,7 @@ public class TripController {
             @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId,
             @Valid @RequestBody PositionBatch batch) {
 
-        String tenantId = callers.requireTenant(userId);
+        String tenantId = callers.tenantForTrip(userId, tripId);
         IngestAck ack = ingest.ingest(tripId, tenantId, batch);
         return ResponseEntity.accepted().body(ack);
     }
@@ -84,7 +84,9 @@ public class TripController {
     public TripDetail start(@PathVariable String shipmentId,
                             @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId,
                             @Valid @RequestBody StartTripRequest request) {
-        String tenantId = callers.requireTenant(userId);
+        // Derived rather than demanded: a driver has no tenant of their own,
+        // and starting the journey is theirs now. See CallerService.
+        String tenantId = callers.tenantForShipment(userId, shipmentId);
         return tripService.start(shipmentId, tenantId,
                 request.vehicleRegistration(), request.driverId());
     }
@@ -92,7 +94,7 @@ public class TripController {
     @PostMapping("/{tripId}/complete")
     public TripDetail complete(@PathVariable String tripId,
                                @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId) {
-        return tripService.complete(tripId, callers.requireTenant(userId));
+        return tripService.complete(tripId, callers.tenantForTrip(userId, tripId));
     }
 
     /**
@@ -111,7 +113,7 @@ public class TripController {
             @PathVariable String tripId,
             @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId,
             @Valid @RequestBody(required = false) StartSimulationRequest request) {
-        return simulations.start(tripId, callers.requireTenant(userId), request);
+        return simulations.start(tripId, callers.tenantForTrip(userId, tripId), request);
     }
 
     /** Parks the vehicle where it stands. The trip and its fixes are untouched. */
@@ -119,7 +121,7 @@ public class TripController {
     public SimulationView stopSimulation(
             @PathVariable String tripId,
             @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId) {
-        return simulations.stop(tripId, callers.requireTenant(userId));
+        return simulations.stop(tripId, callers.tenantForTrip(userId, tripId));
     }
 
     /** 404 when this trip has never been simulated, which is the common case. */
@@ -127,7 +129,7 @@ public class TripController {
     public SimulationView getSimulation(
             @PathVariable String tripId,
             @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId) {
-        return simulations.find(tripId, callers.requireTenant(userId))
+        return simulations.find(tripId, callers.tenantForTrip(userId, tripId))
                 .orElseThrow(() -> ApiException.notFound("No simulation on that trip."));
     }
 
@@ -143,7 +145,7 @@ public class TripController {
     public List<TripSummary> byShipment(
             @PathVariable String shipmentId,
             @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId) {
-        return tripService.listForShipment(shipmentId, callers.requireTenant(userId));
+        return tripService.listForShipment(shipmentId, callers.tenantForShipment(userId, shipmentId));
     }
 
     @GetMapping("/active")
@@ -155,7 +157,7 @@ public class TripController {
     @GetMapping("/{tripId}")
     public TripDetail get(@PathVariable String tripId,
                           @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId) {
-        return tripService.get(tripId, callers.requireTenant(userId));
+        return tripService.get(tripId, callers.tenantForTrip(userId, tripId));
     }
 
     /** The full trace, in driven order. Each fix carries its own provenance. */
@@ -163,6 +165,6 @@ public class TripController {
     public List<PositionView> positions(
             @PathVariable String tripId,
             @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId) {
-        return tripService.positions(tripId, callers.requireTenant(userId));
+        return tripService.positions(tripId, callers.tenantForTrip(userId, tripId));
     }
 }

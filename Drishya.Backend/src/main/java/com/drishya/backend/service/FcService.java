@@ -116,6 +116,21 @@ public class FcService {
                 // windows rather than filtered out by a null check.
                 .filter(s -> {
                     Instant eta = s.getPredictedAt();
+                    // A vehicle that has DEPARTED is inbound now, whatever its
+                    // estimate says. The "today" window asked only about the
+                    // ETA, so a consignment that left this morning for a slot
+                    // the day after tomorrow was invisible to the desk it is
+                    // driving towards — the vendor booked it, the driver
+                    // started it, and the receiving desk had no way to see it
+                    // until the day it arrived. That is the middle of the
+                    // journey this product exists to show.
+                    //
+                    // Being on the road, at the gate or on a bay is not a
+                    // forecast to be filtered by date; it is a fact about right
+                    // now.
+                    if (ON_THE_WAY.contains(s.getStatus())) {
+                        return true;
+                    }
                     return switch (window == null ? "today" : window) {
                         case "today" -> (eta == null || !eta.isAfter(endOfToday))
                                 && s.getStatus() != ShipmentStatus.DELIVERED;
@@ -133,6 +148,16 @@ public class FcService {
                 .map(s -> mapper.toDto(s, false))
                 .toList();
     }
+
+    /**
+     * Statuses that mean the vehicle is already coming, or here.
+     *
+     * <p>These are shown on every window of the arrival board. A desk asking
+     * "what is inbound today" still needs to see the lorry that set off this
+     * morning against a slot on Monday: it is on the road towards them now.
+     */
+    private static final java.util.Set<ShipmentStatus> ON_THE_WAY = java.util.EnumSet.of(
+            ShipmentStatus.IN_TRANSIT, ShipmentStatus.AT_GATE, ShipmentStatus.AT_DOCK);
 
     /** Vehicles physically on site, and the gate log behind them. */
     @Transactional(readOnly = true)
