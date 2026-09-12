@@ -210,11 +210,18 @@
   --sans: 'Inter', 'Manrope', system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
+  /* Above Leaflet, which ships panes at 400 and controls at 1000.
+   *
+   * The map is isolated into its own stacking context (see map.css), so these
+   * no longer have to out-rank it — but they are kept above 1000 anyway. A
+   * third-party stylesheet with a four-digit z-index is a thing that happens,
+   * and an overlay a person cannot reach is a worse failure than one that
+   * paints too eagerly. */
   --z-sticky: 20;
-  --z-drawer: 60;
-  --z-modal: 70;
-  --z-toast: 90;
-  --z-palette: 100;
+  --z-drawer: 1060;
+  --z-modal: 1070;
+  --z-toast: 1090;
+  --z-palette: 1100;
 }
 
 [data-theme='dark'] {

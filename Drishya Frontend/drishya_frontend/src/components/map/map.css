@@ -7,6 +7,23 @@
   overflow: hidden;
   border: 1px solid var(--border);
   background: var(--surface-sunken);
+
+  /* Keep Leaflet's stacking inside this box.
+   *
+   * Leaflet's own stylesheet puts its panes at z-index 400 and its controls at
+   * 1000, against a product scale that topped out at 100. Nothing here creates
+   * a stacking context, so those numbers competed with the whole page and won
+   * every time: a map painted over the modal, the drawer, the toasts and the
+   * command palette. The visible symptom was a consignment that could not be
+   * cancelled — the confirmation dialog rendered underneath the map on the same
+   * screen, so the button was there and simply could not be reached.
+   *
+   * `isolation: isolate` makes this element a stacking context, so 400 and 1000
+   * are measured against each other inside the map and against nothing outside
+   * it. That is the fix at the root: the overlay tokens were also raised past
+   * Leaflet, but on its own that is an arms race, and the next component with
+   * an opinionated z-index would start it again. */
+  isolation: isolate;
 }
 .dm-map .leaflet-container {
   /* Leaflet sizes itself from its container and collapses to zero without an
