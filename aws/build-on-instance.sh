@@ -170,13 +170,6 @@ docker build -t drishya-web:local 'Drishya Frontend/drishya_frontend'
 docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep drishya | head -5
 "
 
-# Safe now: the new images exist, so what this removes is the previous pair.
-run_step "Reclaiming disk after the build" 5 "
-docker image prune -af >/dev/null 2>&1 || true
-docker builder prune -af >/dev/null 2>&1 || true
-df -h / | tail -1
-"
-
 # --- 3. settings ----------------------------------------------------------
 #
 # /etc/drishya.env is written by the stack's user data, which runs ONCE, at
@@ -227,6 +220,26 @@ sleep 60
 docker ps --format '{{.Names}} {{.Status}}'
 echo '--- migrations and startup ---'
 docker logs api 2>&1 | grep -iE 'Migrating to version|Successfully applied|Started DrishyaBackend|ERROR' | tail -20
+"
+
+# Only now, and the reason is worth stating because getting it wrong took the
+# site down.
+#
+# "docker image prune -a" removes every image NOT USED BY A CONTAINER. It does
+# not mean "old". Run between the build and the start — which is where this
+# began life — the freshly built drishya-api:local had no container on it yet
+# while the PREVIOUS images were protected by the containers still running on
+# them, so it deleted exactly the pair that had just been built. The next step
+# then found no drishya-api:local, tried to pull it from a registry that has
+# never held it, and left the box with no containers at all.
+#
+# After the start the ownership is the other way round: the new images are in
+# use and safe, the superseded ones are unreferenced and are what goes.
+run_step "Reclaiming disk now the new images are in use" 5 "
+docker image prune -af >/dev/null 2>&1 || true
+docker builder prune -af >/dev/null 2>&1 || true
+docker images --format '{{.Repository}}:{{.Tag}}' | grep drishya || true
+df -h / | tail -1
 "
 
 # --- 5. verify ------------------------------------------------------------
