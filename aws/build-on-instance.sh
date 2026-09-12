@@ -132,12 +132,49 @@ echo \"source: \$(git log --oneline -1)\"
 # Both images, on the box. The API is the slow one: a full Maven package with
 # no local repository to start from.
 
+# Reclaim disk BEFORE building, and again after.
+#
+# The instance has an 8 GB root volume and each deploy writes a fresh ~615 MB
+# api image plus a full Maven build cache. Nothing removed the old ones, so
+# after enough deploys the build dies inside the container with "No space left
+# on device" — reported by Maven, from a layer, which reads as a code problem
+# and is not one.
+#
+# ORDER MATTERS, and it is the whole reason this is two steps rather than one.
+# Before the build only the build CACHE and dangling layers go: both are
+# rebuildable and neither is the running site. The superseded images are
+# removed only AFTER a build has succeeded, because "docker image prune -a"
+# before a build that then fails would take the images currently serving the
+# site with it, and leave nothing to start.
+run_step "Reclaiming disk before the build" 5 "
+echo 'before:'
+df -h / | tail -1
+docker builder prune -af >/dev/null 2>&1 || true
+docker image prune -f >/dev/null 2>&1 || true
+docker container prune -f >/dev/null 2>&1 || true
+# Container logs grow without bound on a box that is never redeployed cleanly,
+# and the api container is chatty: an ETA cycle a minute, for weeks. Truncated
+# rather than deleted, so a running container keeps its open file handle.
+find /var/lib/docker/containers -name '*-json.log' -exec truncate -s 0 {} + 2>/dev/null || true
+journalctl --vacuum-size=50M >/dev/null 2>&1 || true
+rm -rf /root/Drishya/Drishya.Backend/target 2>/dev/null || true
+echo 'after:'
+df -h / | tail -1
+"
+
 run_step "Building both images (this is the slow part)" 30 "
 set -e
 cd /root/Drishya
 docker build -t drishya-api:local Drishya.Backend
 docker build -t drishya-web:local 'Drishya Frontend/drishya_frontend'
 docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep drishya | head -5
+"
+
+# Safe now: the new images exist, so what this removes is the previous pair.
+run_step "Reclaiming disk after the build" 5 "
+docker image prune -af >/dev/null 2>&1 || true
+docker builder prune -af >/dev/null 2>&1 || true
+df -h / | tail -1
 "
 
 # --- 3. settings ----------------------------------------------------------
