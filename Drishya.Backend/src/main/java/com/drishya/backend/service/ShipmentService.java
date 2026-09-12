@@ -264,6 +264,10 @@ public class ShipmentService {
         s.setDelayMin(0);
         s.setSlotStart(promisedAt);
         s.setSlotEnd(promisedAt.plus(1, ChronoUnit.HOURS));
+        // A window the vendor chose is an agreement; one derived from the
+        // fallback above is a placeholder for the engine to replace at
+        // departure. They are the same column, so the difference is recorded.
+        s.setSlotAgreed(request.slotStart() != null);
         s.setCommodity(request.commodity());
         s.setCartons(request.cartons());
         s.setWeightKg(request.weightKg());

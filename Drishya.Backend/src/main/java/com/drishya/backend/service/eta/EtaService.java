@@ -9,6 +9,7 @@ import com.drishya.backend.repo.EtaPredictionRepository;
 import com.drishya.backend.repo.TripRepository;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -116,10 +117,52 @@ public class EtaService {
         if (shipment != null) {
             shipment.setPredictedAt(dockIn);
             applyProgress(shipment, features.remainingDistanceM());
+            bookWindowIfNoneAgreed(shipment, dockIn);
             checkSlot(trip, shipment, prediction);
         }
 
         return Optional.of(prediction);
+    }
+
+    /**
+     * Sets the delivery window from the engine's first real estimate, for a
+     * consignment booked without one.
+     *
+     * <p>The booking form asks the vendor when the goods are collected and
+     * nothing else. Something still has to say what was promised: promisedAt is
+     * the fixed point every delay figure is measured against, and late is
+     * predicted minus promised. Left to the create-time fallback it is now plus
+     * 36 hours, which on a 127 km lane means every consignment arrives
+     * comfortably early and the product demonstrates nothing.
+     *
+     * <p><b>Here, and not at departure, because the engine cannot answer any
+     * earlier.</b> The obvious place was TripService.start, and it was tried:
+     * FeatureBuilder needs a position fix to build features from, and at the
+     * moment a trip starts there are none, so it declined and the window stayed
+     * at the fallback. This runs on the first cycle that produces a real
+     * prediction, which is the first moment there is anything honest to promise.
+     *
+     * <p>The promise comes from the engine rather than from arithmetic here.
+     * That is the rule this codebase already holds itself to: two earlier
+     * versions of the seeder estimated arrival independently, disagreed with
+     * the engine by up to nine hours on a long lane, and showed on screen as
+     * "8 h 45 m late" against a slot they had themselves chosen.
+     *
+     * <p>Once only, and never over an agreement. A vendor-supplied slot is left
+     * exactly alone, and this marks the row agreed as it writes, so the next
+     * cycle a minute later does not walk the promise along behind the estimate
+     * — which would make every consignment permanently, perfectly on time.
+     */
+    private void bookWindowIfNoneAgreed(Shipment shipment, Instant dockIn) {
+        if (shipment.isSlotAgreed() || dockIn == null) {
+            return;
+        }
+        shipment.setSlotStart(dockIn);
+        shipment.setSlotEnd(dockIn.plus(1, ChronoUnit.HOURS));
+        shipment.setPromisedAt(dockIn.plus(30, ChronoUnit.MINUTES));
+        shipment.setSlotAgreed(true);
+        log.info("Booked {} a delivery window of {} from the engine's first estimate",
+                shipment.getId(), shipment.getSlotStart());
     }
 
     /**

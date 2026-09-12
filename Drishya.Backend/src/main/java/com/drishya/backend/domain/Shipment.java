@@ -117,6 +117,16 @@ public class Shipment {
     @Column(name = "route_version", nullable = false)
     private int routeVersion = 1;
 
+    /**
+     * Whether {@link #slotStart} is an agreement or a placeholder.
+     *
+     * <p>True when the vendor chose the window at booking. False when they did
+     * not, in which case TripService books a real one from the ETA engine as
+     * the vehicle departs, and sets this. See V13.
+     */
+    @Column(name = "slot_agreed", nullable = false)
+    private boolean slotAgreed = true;
+
     @Embedded
     @AttributeOverrides({
             @AttributeOverride(name = "lat", column = @Column(name = "pos_lat")),

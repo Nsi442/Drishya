@@ -42,24 +42,18 @@ const isoDate = (d) =>
 const todayISO = () => isoDate(new Date())
 
 /**
- * A sensible first offer for the pickup, and a slot after it.
+ * A sensible first offer for the pickup. The only time this form asks for.
  *
- * The form used to open with today at 09:00 and a slot at 14:00, which is
- * invalid for anyone booking after ten in the morning: the first thing the
- * vendor saw was their own form telling them the pickup was in the past. A
- * default that is wrong more often than it is right is not a default.
- *
- * Next whole hour at least an hour out, and the slot a working day later —
- * near enough to the lane times on this network to be a real proposal rather
- * than a placeholder.
+ * It used to open with today at 09:00, which is invalid for anyone booking
+ * after ten in the morning: the first thing the vendor saw was their own form
+ * telling them the pickup was in the past. A default that is wrong more often
+ * than it is right is not a default.
  */
 function defaultTimes(now = new Date()) {
   const pickup = new Date(now.getTime() + 60 * 60 * 1000)
   pickup.setMinutes(0, 0, 0)
-  const slot = new Date(pickup.getTime() + 20 * 60 * 60 * 1000)
-  slot.setMinutes(0, 0, 0)
   const hhmm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-  return { pickupDate: isoDate(pickup), pickupTime: hhmm(pickup), slotDate: isoDate(slot), slotTime: hhmm(slot) }
+  return { pickupDate: isoDate(pickup), pickupTime: hhmm(pickup) }
 }
 
 export default function ShipmentNew() {
@@ -108,7 +102,6 @@ export default function ShipmentNew() {
   const vehicle = db.vehicles.find((v) => v.id === form.vehicleId)
   const driver = db.drivers.find((d) => d.id === form.driverId)
 
-  const slotStart = useMemo(() => new Date(`${form.slotDate}T${form.slotTime}:00`), [form.slotDate, form.slotTime])
   // The bay clash check went with the picker. Nothing on this screen can clash
   // any more: a slot is a request, and the desk resolves bay contention when it
   // allocates — with the whole yard in view, which this form never had.
@@ -125,11 +118,6 @@ export default function ShipmentNew() {
       if (!form.fcId) next.fcId = 'Choose the destination fulfilment centre'
       const pickup = new Date(`${form.pickupDate}T${form.pickupTime}:00`)
       if (pickup.getTime() < Date.now() - 3600000) next.pickupDate = 'Pickup cannot be in the past'
-      // The slot moved onto this step, so its rule did too — and it has to be
-      // after the pickup, not merely in the future: a window that opens before
-      // the vehicle is loaded is a booking nobody can keep.
-      if (slotStart.getTime() < Date.now()) next.slotTime = 'The slot must be in the future'
-      else if (slotStart.getTime() < pickup.getTime()) next.slotTime = 'The slot cannot be before the pickup'
     }
     if (index === 2) {
       if (!form.vehicleId) next.vehicleId = 'Assign a vehicle'
@@ -161,7 +149,6 @@ export default function ShipmentNew() {
         weightKg: Number(form.weightKg),
         valueInr: Number(form.valueInr) || 0,
         pickupAt: new Date(`${form.pickupDate}T${form.pickupTime}:00`).toISOString(),
-        slotStart: slotStart.toISOString(),
         documents: [
           { type: 'invoice', number: form.invoiceNo },
           { type: 'eway', number: form.ewayBillNo },
@@ -266,10 +253,6 @@ export default function ShipmentNew() {
                     <Input label="Pickup time" type="time" value={form.pickupTime} onChange={(e) => set({ pickupTime: e.target.value })} required />
                   </div>
                   <Select label="Destination fulfilment centre" value={form.fcId} onChange={(e) => set({ fcId: e.target.value })} options={db.fulfilmentCentres.map((f) => ({ value: f.id, label: `${f.name} — ${f.city}` }))} error={errors.fcId} required />
-                  <div className="grid grid-2">
-                    <DatePicker label="Requested slot date" value={form.slotDate} onChange={(v) => set({ slotDate: v })} min={todayISO()} required />
-                    <Input label="Slot start" type="time" value={form.slotTime} onChange={(e) => set({ slotTime: e.target.value })} error={errors.slotTime} required hint="One-hour window" />
-                  </div>
                   {/* The slot is what the platform later measures against: it
                       becomes promisedAt, which never moves, and every delay
                       figure in the product is the gap between it and what the
@@ -280,9 +263,10 @@ export default function ShipmentNew() {
                       No dock picker, though. A booking agrees a SLOT; which bay
                       the vehicle stands on is the receiving desk's, decided
                       against a yard this screen cannot see. */}
-                  <Callout tone="info" title="The fulfilment centre assigns the bay">
-                    You are booking a one-hour window. The receiving desk allocates a dock against its
-                    yard about an hour before arrival, and you and the driver are both told which one.
+                  <Callout tone="info" title="The delivery window is worked out for you">
+                    You give the pickup time. The platform sets the delivery window from what this lane
+                    actually runs at when the driver sets off, and the receiving desk allocates a dock
+                    against its yard about an hour before arrival — you and the driver are told both.
                   </Callout>
                   <Textarea label="Note to the fulfilment centre" value={form.slotNote} onChange={(e) => set({ slotNote: e.target.value })} rows={3} placeholder="Driver will need a tail-lift; no forklift on this vehicle." />
                   <Callout tone="info" title="Lane">
@@ -359,7 +343,7 @@ export default function ShipmentNew() {
                     <DataPoint label="Driver" value={driver?.name ?? '—'} />
                     <DataPoint label="Invoice" value={form.invoiceNo} mono />
                     <DataPoint label="E-way bill" value={form.ewayBillNo} mono />
-                    <DataPoint label="Requested slot" value={slotStart.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })} />
+                    <DataPoint label="Delivery window" value="Set when the driver sets off" />
                   </div>
 
                   <div>
@@ -402,7 +386,7 @@ export default function ShipmentNew() {
             <DataPoint label="Driver" value={driver?.name ?? 'Not assigned'} />
             <hr className="divider" />
             <DataPoint label="Documents attached" value={`${(form.invoiceNo ? 1 : 0) + (form.ewayBillNo ? 1 : 0) + files.length}`} />
-            <DataPoint label="Requested slot" value={slotStart.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })} />
+            <DataPoint label="Delivery window" value="Set when the driver sets off" />
 
             <Callout tone="neutral" icon="info">
               A booked shipment stays editable until the driver marks it loaded. After that, changes have to go through
