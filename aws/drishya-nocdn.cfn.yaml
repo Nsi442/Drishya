@@ -106,8 +106,14 @@ Parameters:
     Default: t3.micro
     AllowedValues: [t3.micro, t3.small, t4g.micro, t4g.small]
     Description: >-
-      t3.micro is the documented target and is 1 GB of RAM. The JVM is capped
-      below that in the container run command.
+      t3.micro is 1 GB and is free-tier eligible, and it is genuinely marginal:
+      the JVM, nginx, dockerd and the OS leave about 128 MB spare, and over the
+      line the kernel picks a victim and the machine wedges until it is
+      rebooted. t3.small is 2 GB and is NOT free-tier eligible — about $0.0208
+      an hour in ap-south-1. aws/resize-instance.sh switches between them
+      without touching any other parameter, and the change is a stop and start
+      rather than a replacement, so the volume and the built images survive.
+      Note that it does hand out a new public DNS name.
 
   DbInstanceClass:
     Type: String
