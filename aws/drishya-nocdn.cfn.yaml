@@ -402,6 +402,30 @@ Resources:
     Properties:
       Roles: [!Ref InstanceRole]
 
+  # An address that survives a stop and start.
+  #
+  # Without one, the instance gets a fresh auto-assigned public IP every time it
+  # stops — which a resize does, and which a failure sometimes does. The URL
+  # changed under the demonstration repeatedly, and every browser tab, bookmark
+  # and slide holding it had to be found and corrected.
+  #
+  # COST. Since February 2024 AWS charges for every public IPv4 address,
+  # including the auto-assigned one this instance already had, at about $0.005
+  # an hour. Associating an Elastic IP RELEASES the auto-assigned one, so this
+  # is roughly cost-neutral — one charged address either way, about $3.60 a
+  # month. It keeps costing that while the instance is stopped, which the
+  # auto-assigned one did not, so a stack left stopped for weeks is the one case
+  # where this is worse. Release it by deleting the stack, not by detaching it:
+  # an Elastic IP that belongs to nothing is charged and is easy to forget.
+  ApiAddress:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref ApiInstance
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-address"
+
   ApiInstance:
     Type: AWS::EC2::Instance
     DependsOn: DefaultRoute
@@ -532,12 +556,23 @@ Resources:
 Outputs:
 
   SiteUrl:
-    Description: Open this. HTTP, not HTTPS — see the note at the top of the template.
-    Value: !Sub "http://${ApiInstance.PublicDnsName}"
+    Description: >-
+      Open this. HTTP, not HTTPS — see the note at the top of the template. It
+      is the Elastic IP rather than the instance's DNS name, so it does not
+      change when the instance stops and starts.
+    Value: !Sub "http://${ApiAddress}"
 
   ApiHealth:
     Description: Readiness endpoint, through nginx. Check this first if the site looks empty.
-    Value: !Sub "http://${ApiInstance.PublicDnsName}/actuator/health/readiness"
+    Value: !Sub "http://${ApiAddress}/actuator/health/readiness"
+
+  SiteDnsName:
+    Description: >-
+      The same machine by name rather than by number. Derived from the Elastic
+      IP, so it is stable too — AWS forms it from the address itself.
+    Value: !Sub
+      - "http://ec2-${dashed}.${AWS::Region}.compute.amazonaws.com"
+      - dashed: !Join ["-", !Split [".", !Ref ApiAddress]]
 
   EcrRepository:
     Description: Push the API image here.

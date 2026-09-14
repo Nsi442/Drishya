@@ -1,29 +1,37 @@
 #!/usr/bin/env bash
-# Builds and runs Drishya ON the EC2 instance, without pushing to ECR.
 #
-#   ./aws/build-on-instance.sh
+# Changes the instance size, and applies the stack template as it stands here.
 #
-# WHY THIS EXISTS. The normal path is aws/deploy-nocdn.sh, which builds the
-# images on your machine and pushes them to ECR. That is the right way round
-# when it works: the instance has 1 GB of RAM and a Maven build there is slow.
+#   ./aws/resize-instance.sh            # to t3.small, the default
+#   ./aws/resize-instance.sh t3.micro   # back again
 #
-# It stops working when your machine cannot upload to ECR — a corporate
-# network, a VPN, a flaky link, Docker Desktop's own DNS. The symptom is a push
-# that retries every layer and never finishes, sometimes even for layers that
-# reported "Layer already exists" a minute earlier. No amount of retrying fixes
-# a link that cannot sustain the transfer.
+# WHY. 1 GB runs the JVM, nginx, dockerd and the OS with about 128 MB to spare,
+# which is where the wedging comes from: over the line the kernel picks the
+# victim, and a machine whose dockerd is being starved cannot restart anything,
+# so the only way back is a reboot. The watchdog and the container memory limit
+# make that survivable. t3.small is 2 GB and makes it unlikely.
 #
-# So this turns the problem around. The instance is already inside AWS, so it
-# clones from GitHub and builds locally, and nothing is uploaded from your side
-# at all. The images never touch a registry.
+# WHAT IT COSTS. t3.small is NOT free-tier eligible: about $0.0208 an hour in
+# ap-south-1, roughly $15 a month, or about $0.50 a day if the instance is only
+# up for the demonstration. t3.micro is free-tier eligible for 750 hours a
+# month in the first year. Going back is this same command with t3.micro, so
+# the decision is reversible — which is a different decision from one that is
+# not.
 #
-# THE TRADE, STATED PLAINLY. The images exist only on that one instance. If
-# CloudFormation ever replaces it, they are gone and this has to run again —
-# whereas an image in ECR survives. Use aws/deploy-nocdn.sh whenever your
-# network lets you.
+# WHAT HAPPENS TO THE MACHINE. Changing the type of an existing instance is a
+# stop, a modify and a start — "some interruptions", not a replacement. The
+# root volume survives, so the images built on it and /etc/drishya.env are
+# still there afterwards. User data runs once at first boot and is not re-run.
+# The script checks the containers came back rather than assuming it.
 #
-# Needs only the AWS CLI. No Session Manager plugin: every step goes through
-# ssm send-command, the same channel deploy-nocdn.sh already uses for PostGIS.
+# THE ADDRESS. The template carries an Elastic IP, which this applies along
+# with the size, so from here the address survives a stop and a start and stops
+# moving. On the first run since it was added the URL changes once, because the
+# instance gives up its auto-assigned address for the fixed one. That should be
+# the last time it changes.
+#
+# IT DOES NOT TOUCH THE IMAGES. This is a stack operation only. Deploying code
+# is still aws/build-on-instance.sh.
 set -euo pipefail
 
 REGION="${REGION:-ap-south-1}"
@@ -120,36 +128,37 @@ echo "  from    : ${CURRENT:-unknown}"
 echo "  to      : $SIZE"
 
 if [ "$CURRENT" = "$SIZE" ]; then
+    # Not an early exit. The size being unchanged says nothing about the
+    # TEMPLATE being unchanged, and this script applies both — short-circuiting
+    # here would silently skip the Elastic IP on a second run. `deploy` with
+    # --no-fail-on-empty-changeset is a no-op when there is genuinely nothing
+    # to do, which is the right way to decide that.
     echo
-    echo "  Already $SIZE. Nothing to do."
-    exit 0
+    echo "  Already $SIZE; applying the template anyway in case it has moved."
 fi
 
-# Every other parameter is carried forward untouched.
+# `deploy`, not `update-stack`, and the difference matters here.
 #
-# update-stack replaces the whole parameter set, so anything not listed reverts
-# to its template default — which for DbPassword and JwtSecret would be wrong in
-# a way that is not obvious until the application will not start, or signs
-# everyone out. UsePreviousValue says "leave this exactly as it is" without this
-# script ever having to read a secret, let alone print one.
-OTHERS=$(aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK" \
-    --query "Stacks[0].Parameters[?ParameterKey!='InstanceType'].ParameterKey" --output text)
-
-PARAMS="ParameterKey=InstanceType,ParameterValue=$SIZE"
-for k in $OTHERS; do
-    PARAMS="$PARAMS ParameterKey=$k,UsePreviousValue=true"
-done
-
+# update-stack replaces the WHOLE parameter set: anything not listed reverts to
+# its template default, and an unlisted DbPassword or JwtSecret means an
+# application that will not start, or one that signs everyone out, discovered
+# some minutes later. `deploy` keeps every parameter not named in
+# --parameter-overrides at the value the stack already holds, so the secrets are
+# never read by this script, never passed through it and never printed.
+#
+# The template file rather than --use-previous-template, because the repository
+# is the source of truth for the stack and there is a change in it that has to
+# land: the Elastic IP. One update applies both.
 say "Updating the stack (the instance stops, changes size and starts again)"
-aws cloudformation update-stack --region "$REGION" --stack-name "$STACK" \
-    --use-previous-template \
-    --capabilities CAPABILITY_NAMED_IAM \
-    --parameters $PARAMS >/dev/null \
-    || die "update-stack was refused. If it says 'No updates are to be performed', the size is already $SIZE."
-
-echo "  waiting — this takes about three to five minutes"
-aws cloudformation wait stack-update-complete --region "$REGION" --stack-name "$STACK" \
-    || die "The update did not complete. Look at the stack events in the console: aws cloudformation describe-stack-events --stack-name $STACK"
+echo "  this takes about three to five minutes"
+aws cloudformation deploy \
+    --region "$REGION" \
+    --stack-name "$STACK" \
+    --template-file aws/drishya-nocdn.cfn.yaml \
+    --capabilities CAPABILITY_IAM \
+    --no-fail-on-empty-changeset \
+    --parameter-overrides InstanceType="$SIZE" \
+    || die "The update did not complete. The stack events say why: aws cloudformation describe-stack-events --stack-name $STACK --max-items 20"
 
 # --- what it is now -------------------------------------------------------
 
@@ -162,9 +171,10 @@ say "Done"
 echo "  instance type: $NEW_TYPE"
 echo "  site URL     : $NEW_URL"
 echo
-echo "  THE URL HAS CHANGED. There is no Elastic IP on this stack, so stopping"
-echo "  and starting the instance hands out a new public DNS name. Update any"
-echo "  tab, bookmark or slide that holds the old one."
+echo "  The stack now carries an Elastic IP, so this address survives a stop and"
+echo "  a start and will not move again. If this is the first run since it was"
+echo "  added the URL has changed once, now — update any tab, bookmark or slide,"
+echo "  and that should be the last time."
 
 # --- are the containers back? ---------------------------------------------
 #
