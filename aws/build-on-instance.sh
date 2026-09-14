@@ -211,9 +211,23 @@ run_step "Starting the containers on the new images" 5 "
 set -e
 docker network create drishya 2>/dev/null || true
 docker rm -f api web 2>/dev/null || true
+# --memory, and a heap sized FROM it rather than beside it.
+#
+# The instance has 913 MB and runs this JVM, nginx, dockerd and the OS. With an
+# -Xmx of 448m plus 128m of metaspace plus JVM overhead, the process alone
+# reaches for most of the box; a deploy's own output showed 128 Mi available
+# with swap already in use. When it goes over, the KERNEL picks the victim, and
+# a machine whose dockerd is being starved cannot restart anything — which is
+# why the site has to be recovered with a reboot rather than by itself.
+#
+# With a limit, Docker enforces it instead: the container is killed, --restart
+# always brings it straight back, and the rest of the machine stays responsive.
+# MaxRAMPercentage makes the JVM read the cgroup limit rather than guess, so
+# the two numbers cannot drift apart the way -Xmx and --memory would.
 docker run -d --name api --network drishya --restart always \
+  --memory=700m --memory-swap=1400m \
   --env-file /etc/drishya.env \
-  -e JAVA_TOOL_OPTIONS='-Xmx448m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC' \
+  -e JAVA_TOOL_OPTIONS='-XX:MaxRAMPercentage=60 -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC' \
   drishya-api:local >/dev/null
 docker run -d --name web --network drishya --restart always -p 80:80 drishya-web:local >/dev/null
 sleep 60
@@ -240,6 +254,65 @@ docker image prune -af >/dev/null 2>&1 || true
 docker builder prune -af >/dev/null 2>&1 || true
 docker images --format '{{.Repository}}:{{.Tag}}' | grep drishya || true
 df -h / | tail -1
+"
+
+# --- 4b. the watchdog -----------------------------------------------------
+#
+# The image has declared a HEALTHCHECK all along, and nothing was acting on it.
+# Docker's --restart always restarts a container that EXITS; it does nothing
+# for one that is running and unhealthy. A JVM that is alive but wedged — out
+# of heap and thrashing, or holding a pool of dead connections — therefore
+# stays wedged indefinitely, which is exactly the state that has been requiring
+# a manual reboot.
+#
+# This acts on the signal that already exists. Every two minutes: if the health
+# status says unhealthy, restart the container and write a line saying so. If
+# the container is missing entirely, start it from the image that is already
+# there.
+#
+# The script travels base64 for the same reason the steps do — it is
+# alphanumeric, so nothing in it can be mangled by quoting through SSM, the
+# JSON parameter and Git Bash. A previous attempt at embedding a shell loop
+# with "$f" through those layers silently produced a script that matched
+# nothing and reported success.
+WATCHDOG_B64=$(cat <<'WATCHDOG' | base64 | tr -d '\n'
+#!/usr/bin/env bash
+# Restarts the Drishya API when its own healthcheck says it is unhealthy.
+# Installed by aws/build-on-instance.sh. Runs from cron every two minutes.
+set -u
+LOG=/var/log/drishya-watchdog.log
+
+state=$(docker inspect -f '{{.State.Health.Status}}' api 2>/dev/null || echo missing)
+running=$(docker inspect -f '{{.State.Running}}' api 2>/dev/null || echo false)
+
+case "$state" in
+  healthy|starting)
+    exit 0 ;;
+  missing)
+    if [ "$running" != "true" ]; then
+      echo "$(date -Is) api container missing; starting it" >> "$LOG"
+      docker start api >/dev/null 2>&1 || true
+    fi
+    exit 0 ;;
+  unhealthy)
+    echo "$(date -Is) api unhealthy; restarting" >> "$LOG"
+    free -m | sed -n '2p' >> "$LOG"
+    docker restart api >/dev/null 2>&1 || true
+    exit 0 ;;
+esac
+WATCHDOG
+)
+
+run_step "Installing the watchdog that acts on the healthcheck" 3 "
+echo $WATCHDOG_B64 | base64 -d > /usr/local/bin/drishya-watchdog.sh
+chmod +x /usr/local/bin/drishya-watchdog.sh
+printf '%s\n' '*/2 * * * * root /usr/local/bin/drishya-watchdog.sh' > /etc/cron.d/drishya-watchdog
+chmod 644 /etc/cron.d/drishya-watchdog
+systemctl restart crond 2>/dev/null || systemctl restart cron 2>/dev/null || true
+echo 'watchdog installed:'
+bash -n /usr/local/bin/drishya-watchdog.sh && echo '  script parses'
+/usr/local/bin/drishya-watchdog.sh && echo '  dry run exited 0'
+cat /etc/cron.d/drishya-watchdog
 "
 
 # --- 5. verify ------------------------------------------------------------
