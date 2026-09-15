@@ -157,45 +157,60 @@ df -h / | tail -1
 #
 # With --memory, Docker enforces the ceiling instead: the container is killed,
 # --restart always brings it back, and the rest of the machine stays
-# responsive. MaxRAMPercentage makes the JVM read the cgroup limit rather than
-# guess, so the two numbers cannot drift apart the way -Xmx and --memory would.
+# responsive.
 #
-# The image is checked BEFORE the container is removed. Removing a container
-# and then discovering there is no image to start is the failure that took the
-# site down last time, and it is cheap to make impossible.
+# The limit is sized from the host. A t3.micro has 913 MB and gets 700m; a
+# t3.small has 1,909 MB and can afford 1000m. Hard-coding 700m on the larger
+# box would throttle it for no reason.
 
-run_step "Restarting the API under a memory limit" 5 "
+run_step "Applying a memory limit to the API" 5 "
 set -e
-if [ -z \"\$(docker images -q drishya-api:local 2>/dev/null)\" ]; then
-  echo 'ERROR: drishya-api:local is not on this instance.'
-  echo 'Nothing has been changed. Run aws/build-on-instance.sh to build it.'
-  exit 1
+if [ -z \"\$(docker ps -aq -f name=^api\$)\" ]; then
+  # No container at all. This is the only path that needs an image, and it is
+  # the only path that may create one from scratch.
+  if [ -z \"\$(docker images -q drishya-api:local 2>/dev/null)\" ]; then
+    echo 'ERROR: the api container is missing and drishya-api:local is not on this instance.'
+    echo 'Nothing has been changed. Run aws/build-on-instance.sh to build and start it.'
+    exit 1
+  fi
+  if [ ! -f /etc/drishya.env ]; then
+    echo 'ERROR: /etc/drishya.env is missing, so the API has no database settings.'
+    echo 'Nothing has been changed. aws/repair-api.sh writes that file.'
+    exit 1
+  fi
+  docker network create drishya 2>/dev/null || true
+  docker run -d --name api --network drishya --restart always \
+    --memory=700m --memory-swap=1400m \
+    --env-file /etc/drishya.env \
+    -e JAVA_TOOL_OPTIONS='-XX:MaxRAMPercentage=60 -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC' \
+    drishya-api:local >/dev/null
+  echo 'api was missing; started it from drishya-api:local under a 700m limit'
+else
+  # The container exists, so change its ceiling IN PLACE rather than recreating
+  # it.
+  #
+  # Recreating would mean reconstructing the run command, and the stack's user
+  # data starts this container with a CloudWatch log driver and stream that a
+  # naive 'docker run --env-file ... drishya-api:local' does not carry. Losing
+  # those sends the logs back to Docker's local json file — readable only from
+  # a shell on the box, which is exactly what is unavailable when the thing
+  # this script exists for is happening. It would also pin the container to a
+  # locally built image on an instance whose images came from ECR.
+  #
+  # 'docker update' writes the cgroup limit and the container's stored host
+  # config, so it survives the restarts that --restart always and the watchdog
+  # perform. No downtime, nothing else touched.
+  TOTAL=\$(free -m | awk '/^Mem:/{print \$2}')
+  if [ \"\$TOTAL\" -ge 1500 ]; then LIM=1000m; SWP=2000m; else LIM=700m; SWP=1400m; fi
+  echo \"host memory: \${TOTAL}m -> container limit \$LIM\"
+  docker update --memory=\$LIM --memory-swap=\$SWP api >/dev/null 2>&1 \
+    || docker update --memory=\$LIM api >/dev/null 2>&1 \
+    || { echo 'ERROR: could not set a memory limit on the api container.'; exit 1; }
+  APPLIED=\$(docker inspect -f '{{.HostConfig.Memory}}' api)
+  echo \"applied limit: \$((APPLIED / 1024 / 1024))m\"
+  echo \"heap flags in effect: \$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' api | grep JAVA_TOOL_OPTIONS || echo '(none set \u2014 the JVM sizes from the cgroup limit above)')\"
 fi
-echo 'image present:' \$(docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep drishya-api | head -1)
 
-# Same reasoning as the image check, one layer along. /etc/drishya.env is
-# written by the stack's user data at first boot; without it the docker run
-# below fails, and it would fail AFTER the running container had been removed.
-# Check first, change nothing if it is missing.
-if [ ! -f /etc/drishya.env ]; then
-  echo 'ERROR: /etc/drishya.env is missing, so the API has no database settings.'
-  echo 'Nothing has been changed. aws/repair-api.sh writes that file.'
-  exit 1
-fi
-echo 'settings present:' \$(grep -c . /etc/drishya.env) 'lines'
-
-docker network create drishya 2>/dev/null || true
-docker rm -f api 2>/dev/null || true
-docker run -d --name api --network drishya --restart always \
-  --memory=700m --memory-swap=1400m \
-  --env-file /etc/drishya.env \
-  -e JAVA_TOOL_OPTIONS='-XX:MaxRAMPercentage=60 -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC' \
-  drishya-api:local >/dev/null
-echo 'api started under a 700m limit'
-
-# The web container is nginx and needs no limit, so it is left running rather
-# than recreated — less downtime, and one less thing that can fail to come
-# back. Started only if it is actually missing.
 if [ -z \"\$(docker ps -q -f name=^web\$)\" ]; then
   if [ -n \"\$(docker images -q drishya-web:local 2>/dev/null)\" ]; then
     docker rm -f web 2>/dev/null || true
@@ -208,10 +223,7 @@ else
   echo 'web already running; left alone'
 fi
 
-sleep 60
 docker ps --format '{{.Names}}\t{{.Status}}'
-echo '--- api startup ---'
-docker logs api 2>&1 | grep -iE 'Started DrishyaBackend|Successfully applied|ERROR' | tail -10
 "
 
 # --- 4. the watchdog ------------------------------------------------------

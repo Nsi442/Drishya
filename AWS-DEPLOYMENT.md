@@ -315,6 +315,7 @@ press **Start trip** — the server drives it with nothing open.
 | The site wedges and only a reboot fixes it | The API has no memory limit, so the kernel picks the victim and a starved dockerd cannot restart anything. `bash aws/rescue.sh`. |
 | A deploy dies with `No space left on device` | The 8 GB root volume, filled by old images, build cache and container logs. `bash aws/rescue.sh` reclaims it without building. |
 | `/etc/cron.d/...: No such file or directory` | Amazon Linux 2023 ships no cron. The watchdog is scheduled by a systemd timer instead — `systemctl list-timers drishya-watchdog.timer`. |
+| Everything on the instance is gone after a resize | A type change can REPLACE the instance rather than stop and start it — the instance id changes, the root volume is new, and anything built locally on it is gone. The containers come back because the stack's user data pulls from ECR, so the site serves whatever was last *pushed*, not what is on main. Re-run `aws/rescue.sh` and `aws/build-on-instance.sh` after any resize. |
 | `InvalidInstanceId ... Instances not in a valid state` | The instance was stopped and started by a resize and its SSM agent has not re-registered. `aws/resize-instance.sh` now waits for `instance-running` and for SSM to report `Online` before sending anything. |
 
 ### Rescue, and why it is not the rebuild
