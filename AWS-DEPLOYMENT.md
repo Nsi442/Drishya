@@ -312,6 +312,29 @@ press **Start trip** — the server drives it with nothing open.
 | A hard refresh on `/vendor/shipments` 404s | The CloudFront Function is not attached to the default behaviour. |
 | Blank page, `Unexpected token '<'` in the console | A JS chunk 404'd and was rewritten to `index.html`. The function leaves dotted paths alone — check the S3 sync actually uploaded `assets/`. |
 | Stack stuck in `DELETE_FAILED` | Almost always a non-empty S3 bucket. Empty it, delete again. |
+| The site wedges and only a reboot fixes it | The API has no memory limit, so the kernel picks the victim and a starved dockerd cannot restart anything. `bash aws/rescue.sh`. |
+| A deploy dies with `No space left on device` | The 8 GB root volume, filled by old images, build cache and container logs. `bash aws/rescue.sh` reclaims it without building. |
+
+### Rescue, and why it is not the rebuild
+
+`aws/build-on-instance.sh` carries the same three protections `aws/rescue.sh`
+does — reclaimed disk, a memory limit on the API container, a watchdog acting
+on the healthcheck — but applies them as part of a 25-minute rebuild that
+**writes several hundred megabytes before it frees any**. On a box already
+wedging for want of disk that is the one thing most likely to fail, and it has
+failed exactly that way.
+
+```bash
+bash aws/rescue.sh          # ~2 min, no build, uses the image already there
+bash aws/resize-instance.sh # only if it still wedges: t3.small + a fixed address
+```
+
+`rescue.sh` deploys no new code — the running image is whatever was last built
+on the instance. It checks that the image and `/etc/drishya.env` are both
+present **before** it removes the running container, because removing a
+container and then finding nothing to start is how the site went to 503 once
+already.
+
 
 **On secrets:** `cfn-lint` warns (`W1011`) that the database password and JWT
 secret are template parameters rather than Secrets Manager references. That is a

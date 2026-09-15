@@ -54,7 +54,13 @@ public class TripService {
      * each of them their own sparse history — which is precisely the
      * single-vendor failure the cluster exists to avoid.
      */
-    private static final double LANE_MATCH_TOLERANCE_M = 5_000;
+    /**
+     * Package-private, not private: {@code ShipmentService} costs a booking
+     * against the lane this same lookup will later attach the trip to. One
+     * constant, so the promise and the prediction cannot land on different
+     * corridors.
+     */
+    static final double LANE_MATCH_TOLERANCE_M = 5_000;
 
     /** Matches FeatureBuilder.MAX_FIX_AGE: past this, we no longer predict. */
     private static final long STALE_AFTER_MINUTES = 120;

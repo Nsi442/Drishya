@@ -7,7 +7,7 @@ import useNow from '../../hooks/useNow.js'
 import { gateIn, gateOut } from '../../services/fcService.js'
 import { assignDock, advanceShipment } from '../../services/shipmentService.js'
 import { DETENTION_AMBER_MIN, DETENTION_RED_MIN } from '../../lib/constants.js'
-import { formatDateTime, formatNumber, formatTime } from '../../lib/format.js'
+import { formatDateTime, formatNumber, formatTime, minutesBetween } from '../../lib/format.js'
 import { refData as db } from '../../services/referenceData.js'
 import Card, { CardHeader, CardBody } from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
@@ -131,7 +131,7 @@ export default function InboundDetail() {
           <span className="row gap-12 wrap">
             <span className="mono">{shipment.id}</span>
             <StatusPill status={shipment.status} />
-            <DelayPill minutes={Math.round((shipment.predictedAt - shipment.slotStart) / 60000)} />
+            <DelayPill minutes={minutesBetween(shipment.predictedAt, shipment.slotStart)} />
           </span>
         }
         subtitle={`${shipment.vendorName} · ${formatNumber(shipment.cartons)} cartons · ${shipment.vehicleReg}`}

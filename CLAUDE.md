@@ -392,11 +392,35 @@ naming nothing. Build a `URI` with `UriComponentsBuilder` and pass that; a URI i
 untouched. **Note also that Spring strips the query string from its I/O error messages**, so a URL
 in a log looking bare is not evidence the query was lost.
 
-**Absent is not zero, in the UI as well as the API.** `formatTime`/`formatRelative` handed a
+**The promise is made at booking, from the pickup time and the road.** Removing the slot step
+left `create()` on its only other path: a flat `now + 36 hours`, unrelated to the pickup the vendor
+had just typed in. So every newly booked consignment promised a slot a day and a half out, and the
+receiving desk's arrival board — which defaults to today — did not list it at all. It appeared only
+under "All active", or once the driver set off and `ON_THE_WAY` short-circuited the window. The
+vendor booked it, and the desk it was driving towards could not see it.
+`FeatureBuilder.timeFromDeparture` answers the one question a booking can actually ask: what does
+this lane cost, leaving then. It walks the same segments at the same hour-bucketed history that
+`build` uses, from segment zero instead of from a located fix — **the same arithmetic, because a
+booking estimate that disagrees with the engine is the "8 h 45 m late against its own slot" bug in
+a new place.** Verified by booking with pickup = now and comparing: 272 minutes both ways, to the
+minute. With an estimate the window is a real agreement, so `slotAgreed` is set and nothing
+rewrites it later; with no lane matched it stays a placeholder and `EtaService` books it on the
+first cycle, exactly as before.
+
+**Absent is not zero — and the caller is usually where it goes wrong.** `formatTime`/`formatRelative` handed a
 null to `new Date(null)` — epoch 0 — and rendered "ETA 05:30 am · 20695d ago" in the same
 typeface as a real arrival. `DelayPill` defaulted a missing delay to 0 and displayed a confident
 **"On time"** for a consignment the platform had lost track of, which is the reassuring answer in
 the one case that warrants none. Both now render "no estimate".
+
+The same absence then came back one layer up. `DelayPill` guards its input correctly, but the
+arrival board handed it `Math.round((predictedAt - slotStart) / 60000)` — and `null - slotStart`
+is not `NaN`, it is a large negative number. So the variance column read **"497071 h 11 m early"**
+next to a Live ETA that had honestly printed a dash, on every consignment the platform had given
+up on. `InboundDetail` did the same, and `Timeline` offset a null into 1969 and called it
+"expected". `format.js` now exports `minutesBetween`, which returns null when either side is
+absent. **A component that handles absence correctly is no defence if its caller resolves the
+absence into a number first.**
 
 **Seeded demo data must ask the engine, not guess.** `TripSeeder` books each slot from
 `FeatureBuilder`'s own estimate. Two earlier versions estimated arrival independently — a flat

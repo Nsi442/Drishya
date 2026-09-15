@@ -11,6 +11,22 @@ function isAbsent(value) {
   return value === null || value === undefined || value === '' || Number.isNaN(new Date(value).getTime())
 }
 
+/**
+ * The gap between two timestamps in minutes, or null when either is absent.
+ *
+ * Subtraction does not know that null means "no estimate". `null - slotStart`
+ * is not NaN, it is a large negative number, so the arrival board rendered
+ * "497071 h 11 m early" in the variance column beside a Live ETA that had
+ * correctly shown a dash. DelayPill was right to trust its input; the caller
+ * had already turned an absence into a figure before handing it over.
+ *
+ * Returning null puts the decision back where the components already handle it.
+ */
+export function minutesBetween(later, earlier) {
+  if (isAbsent(later) || isAbsent(earlier)) return null
+  return Math.round((new Date(later).getTime() - new Date(earlier).getTime()) / 60000)
+}
+
 export function formatDate(iso, opts = {}) {
   if (isAbsent(iso)) return NO_VALUE
   const d = new Date(iso)

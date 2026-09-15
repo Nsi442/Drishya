@@ -140,6 +140,100 @@ public class FeatureBuilder {
         FulfilmentCentre fc = lane.getFulfilmentCentre();
         DayType dayType = DayType.of(at, SITE_ZONE);
 
+        LaneWalk walk = walkLane(ordered, currentSeq, fractionDone, at);
+        DockQueue queue = queueAfter(fc, at, walk.travelMinutes());
+
+        double remainingM = walk.remainingM();
+        int remainingSegments = walk.remainingSegments();
+        int minSamples = walk.minSamples();
+        double travelMinutes = walk.travelMinutes();
+        double meanSpeedAhead = walk.meanSpeedAhead();
+        double queueMinutes = queue.minutes();
+        int dockSamples = queue.samples();
+        double observedSpeed = recent.stream()
+                .map(Position::getSpeedKmph)
+                .filter(s -> s != null && s > 3)
+                .mapToDouble(Double::doubleValue)
+                .average().orElse(meanSpeedAhead);
+
+        double elapsedMinutes = trip.getStartedAt() == null ? 0
+                : Duration.between(trip.getStartedAt(), at).toMinutes();
+
+        EtaFeatures features = new EtaFeatures(
+                remainingM,
+                remainingSegments,
+                at.atZone(SITE_ZONE).getHour(),
+                dayType == DayType.WEEKEND ? 1 : 0,
+                meanSpeedAhead,
+                minSamples,
+                observedSpeed,
+                elapsedMinutes,
+                queueMinutes,
+                dockSamples,
+                fc == null ? 0 : fc.getDockCount(),
+                travelMinutes + queueMinutes);
+
+        if (log.isDebugEnabled()) {
+            log.debug("Trip {} features: {}", trip.getId(), features.asMap());
+        }
+        return Optional.of(features);
+    }
+
+    /**
+     * What the engine expects a run down this lane to take, setting off at
+     * {@code departAt} — travel plus the queue it expects at the far end.
+     *
+     * <p><b>This exists so that a booking can be promised something honest.</b>
+     * {@link #build} needs a position fix, because it has to know where on the
+     * lane the vehicle is; at the moment a consignment is booked there is no
+     * trip, no vehicle moving and no fix, so it declines. But a booking does not
+     * need to ask where the vehicle is. It knows: at the start, at the pickup
+     * time the vendor just typed in.
+     *
+     * <p>So this walks the whole lane from segment zero rather than from a
+     * located position, and costs every stretch at the same hour-bucketed
+     * history {@code build} uses. It is the same arithmetic reading the same
+     * rows — which is the point. The alternative, a flat average speed at the
+     * booking screen, has been tried twice in this codebase and disagreed with
+     * the engine by up to nine hours on a long lane, showing on screen as
+     * "8 h 45 m late" against a slot the guess had itself chosen.
+     *
+     * @return empty when there is no lane or no segments on it — a genuinely new
+     *     corridor the cluster has no history for. The caller must have a
+     *     fallback; inventing a number here would be the thing this avoids.
+     */
+    public Optional<Duration> timeFromDeparture(Lane lane, Instant departAt) {
+        if (lane == null) {
+            return Optional.empty();
+        }
+        List<LaneSegment> ordered = segments.findByLaneIdOrderBySeqAsc(lane.getId());
+        if (ordered.isEmpty()) {
+            return Optional.empty();
+        }
+        LaneWalk walk = walkLane(ordered, 0, 0, departAt);
+        DockQueue queue = queueAfter(lane.getFulfilmentCentre(), departAt, walk.travelMinutes());
+        return Optional.of(
+                Duration.ofSeconds((long) ((walk.travelMinutes() + queue.minutes()) * 60)));
+    }
+
+    /** What the road ahead costs, and how much the cluster has seen of it. */
+    private record LaneWalk(double travelMinutes, double remainingM, double meanSpeedAhead,
+                            int minSamples, int remainingSegments) {
+    }
+
+    /** The queue the far end is expected to have when the vehicle gets there. */
+    private record DockQueue(double minutes, int samples) {
+    }
+
+    /**
+     * Sums the lane from {@code fromSeq} onwards, costing each stretch at the
+     * hour the vehicle will actually reach it.
+     *
+     * <p>Shared by the live prediction and the booking estimate. They differ
+     * only in where they start from, which is the argument.
+     */
+    private LaneWalk walkLane(List<LaneSegment> ordered, int fromSeq, double fractionDone,
+                              Instant departAt) {
         double remainingM = 0;
         double weightedSpeedSum = 0;
         int minSamples = Integer.MAX_VALUE;
@@ -147,11 +241,11 @@ public class FeatureBuilder {
         double travelMinutes = 0;
 
         for (LaneSegment segment : ordered) {
-            if (segment.getSeq() < currentSeq) {
+            if (segment.getSeq() < fromSeq) {
                 continue;
             }
             double lengthM = segment.getLengthM();
-            if (segment.getSeq() == currentSeq) {
+            if (segment.getSeq() == fromSeq) {
                 lengthM *= (1 - fractionDone);
             }
             if (lengthM <= 0) {
@@ -160,7 +254,7 @@ public class FeatureBuilder {
 
             // The hour the vehicle actually reaches this stretch, not the hour
             // it set off in.
-            Instant reachedAt = at.plus(Duration.ofSeconds((long) (travelMinutes * 60)));
+            Instant reachedAt = departAt.plus(Duration.ofSeconds((long) (travelMinutes * 60)));
             int hourBucket = reachedAt.atZone(SITE_ZONE).getHour();
             DayType bucketDay = DayType.of(reachedAt, SITE_ZONE);
 
@@ -185,43 +279,24 @@ public class FeatureBuilder {
             minSamples = 0;
         }
 
-        Instant gateArrival = at.plus(Duration.ofSeconds((long) (travelMinutes * 60)));
+        return new LaneWalk(
+                travelMinutes,
+                remainingM,
+                remainingM > 0 ? weightedSpeedSum / remainingM : 0,
+                minSamples == Integer.MAX_VALUE ? 0 : minSamples,
+                remainingSegments);
+    }
+
+    /** The pooled dock queue for the hour the vehicle reaches the gate. */
+    private DockQueue queueAfter(FulfilmentCentre fc, Instant departAt, double travelMinutes) {
+        Instant gateArrival = departAt.plus(Duration.ofSeconds((long) (travelMinutes * 60)));
         int gateHour = gateArrival.atZone(SITE_ZONE).getHour();
         Optional<DockTurnaroundHistory> dock = fc == null ? Optional.empty()
                 : dockHistory.findByFulfilmentCentreIdAndHourBucketAndDayType(
                         fc.getId(), gateHour, DayType.of(gateArrival, SITE_ZONE));
-
-        double queueMinutes = dock.map(DockTurnaroundHistory::getMeanQueueMinutes).orElse(0d);
-        int dockSamples = dock.map(DockTurnaroundHistory::getSampleCount).orElse(0);
-
-        double meanSpeedAhead = remainingM > 0 ? weightedSpeedSum / remainingM : 0;
-        double observedSpeed = recent.stream()
-                .map(Position::getSpeedKmph)
-                .filter(s -> s != null && s > 3)
-                .mapToDouble(Double::doubleValue)
-                .average().orElse(meanSpeedAhead);
-
-        double elapsedMinutes = trip.getStartedAt() == null ? 0
-                : Duration.between(trip.getStartedAt(), at).toMinutes();
-
-        EtaFeatures features = new EtaFeatures(
-                remainingM,
-                remainingSegments,
-                at.atZone(SITE_ZONE).getHour(),
-                dayType == DayType.WEEKEND ? 1 : 0,
-                meanSpeedAhead,
-                minSamples == Integer.MAX_VALUE ? 0 : minSamples,
-                observedSpeed,
-                elapsedMinutes,
-                queueMinutes,
-                dockSamples,
-                fc == null ? 0 : fc.getDockCount(),
-                travelMinutes + queueMinutes);
-
-        if (log.isDebugEnabled()) {
-            log.debug("Trip {} features: {}", trip.getId(), features.asMap());
-        }
-        return Optional.of(features);
+        return new DockQueue(
+                dock.map(DockTurnaroundHistory::getMeanQueueMinutes).orElse(0d),
+                dock.map(DockTurnaroundHistory::getSampleCount).orElse(0));
     }
 
     /**
