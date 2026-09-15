@@ -299,10 +299,18 @@ echo
 # curled immediately, and on a run where step 3 had just recreated the
 # container it reported 502 against a container that had been up thirteen
 # seconds — a cold JVM, not a fault, printed as the script's verdict.
-for _ in $(seq 1 30); do
+#
+# Every dollar in here is escaped so it runs on the INSTANCE. An unescaped
+# \$(seq 1 30) expanded locally instead, and thirty numbers separated by
+# newlines turned 'for _ in ...' into a syntax error the moment it landed —
+# which is why the loop is a counter rather than a seq.
+i=0
+h=unknown
+while [ \$i -lt 30 ]; do
   h=\$(docker inspect -f '{{.State.Health.Status}}' api 2>/dev/null || echo missing)
   [ \"\$h\" = starting ] || break
   sleep 5
+  i=\$((i + 1))
 done
 echo \"api health: \$h\"
 echo

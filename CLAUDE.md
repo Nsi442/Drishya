@@ -430,8 +430,20 @@ nginx returned 504 after sixty seconds. The healthcheck kept passing because it 
 — **a probe that only exercises a warm path cannot see a wedged JVM.** Three changes, and all three
 are needed: metaspace to 256 MB with the heap percentage down to 50 so both fit the same container
 limit; `-XX:+ExitOnOutOfMemoryError`, so the JVM dies instead of lingering and `--restart always`
-does its job; and the watchdog now probes `http://localhost/api/health` through nginx, restarting
-on two consecutive failures even when Docker calls the container healthy.
+does its job; and the watchdog now probes `http://localhost/actuator/health` through nginx,
+restarting on two consecutive failures even when Docker calls the container healthy. **The probe
+path must be one that answers**: the first version used `/api/health`, which no controller serves
+and `SecurityConfig` does not permit, so `curl -f` saw a 401 and read a healthy site as dead —
+a watchdog that restarted the API every two minutes for ever.
+
+**The deploy scripts are written in two shells at once, and only one of them errors.**
+`aws/rescue.sh` and `aws/build-on-instance.sh` build their remote work as a double-quoted string
+and hand it to SSM: an escaped `\$` runs on the instance, a bare `$` is expanded here while the
+payload is built. Both mistakes are silent locally. `\$JVM_OPTS` escaped expanded to nothing on
+the box, so the container came up with **no metaspace ceiling and the run reported success**;
+`$(seq 1 30)` left bare expanded to thirty newline-separated numbers, so `for _ in ...` arrived as
+a syntax error naming a line in a file nobody can see. `bash aws/check-payloads.sh` dumps what
+would be sent and parses it, without sending anything. Run it after touching either script.
 
 **Absent is not zero — and the caller is usually where it goes wrong.** `formatTime`/`formatRelative` handed a
 null to `new Date(null)` — epoch 0 — and rendered "ETA 05:30 am · 20695d ago" in the same
