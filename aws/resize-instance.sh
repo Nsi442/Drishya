@@ -162,8 +162,37 @@ aws cloudformation deploy \
 
 # --- what it is now -------------------------------------------------------
 
+# A type change is a stop, a change and a start. CloudFormation reporting
+# UPDATE_COMPLETE does not mean the instance is back and reachable: the first
+# run read the type while the machine was still coming up and printed the size
+# it used to be, then sent an SSM command to an instance whose agent had not
+# re-registered and failed with "Instances not in a valid state".
+say "Waiting for the instance to come back"
+aws ec2 wait instance-running --region "$REGION" --instance-ids "$INSTANCE" \
+    || die "The instance did not reach the running state."
+echo "  ec2: running"
+
+# Running is not the same as manageable. SSM's agent registers a little after
+# boot, and every step below goes through it.
+for i in $(seq 1 30); do
+    PING=$(aws ssm describe-instance-information --region "$REGION" \
+        --filters "Key=InstanceIds,Values=$INSTANCE" \
+        --query 'InstanceInformationList[0].PingStatus' --output text 2>/dev/null || echo None)
+    [ "$PING" = "Online" ] && { echo "  ssm: online"; break; }
+    printf '.'
+    sleep 10
+done
+[ "$PING" = "Online" ] || die "The instance is running but SSM never came online. Wait a minute and re-run."
+
 NEW_TYPE=$(aws ec2 describe-instances --region "$REGION" --instance-ids "$INSTANCE" \
     --query "Reservations[0].Instances[0].InstanceType" --output text)
+
+# Say so rather than printing a size and leaving the reader to notice.
+if [ "$NEW_TYPE" != "$SIZE" ]; then
+    printf '\n\033[31m  WARNING: asked for %s, the instance is %s.\033[0m\n' "$SIZE" "$NEW_TYPE"
+    echo "  The stack updated but the type did not change. Check that the template's"
+    echo "  InstanceType parameter is what aws/drishya-nocdn.cfn.yaml is deployed with."
+fi
 NEW_URL=$(aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK" \
     --query "Stacks[0].Outputs[?OutputKey=='SiteUrl'].OutputValue" --output text)
 

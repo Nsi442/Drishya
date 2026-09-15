@@ -222,11 +222,17 @@ docker logs api 2>&1 | grep -iE 'Started DrishyaBackend|Successfully applied|ERR
 # which is the state that has been requiring a manual reboot.
 #
 # Every two minutes: unhealthy means restart and log why; missing means start.
+#
+# Scheduled with a SYSTEMD TIMER, not cron. Amazon Linux 2023 ships no cron at
+# all — cronie is not installed and /etc/cron.d does not exist — so the first
+# version of this step died on a redirect into a directory that was not there,
+# leaving the watchdog script on disk with nothing ever running it. A timer is
+# the native mechanism and needs no package installed.
 
 WATCHDOG_B64=$(cat <<'WATCHDOG' | base64 | tr -d '\n'
 #!/usr/bin/env bash
 # Restarts the Drishya API when its own healthcheck says it is unhealthy.
-# Installed by aws/rescue.sh. Runs from cron every two minutes.
+# Installed by aws/rescue.sh. Run every two minutes by drishya-watchdog.timer.
 set -u
 LOG=/var/log/drishya-watchdog.log
 
@@ -251,16 +257,56 @@ esac
 WATCHDOG
 )
 
+SERVICE_B64=$(cat <<'UNIT' | base64 | tr -d '\n'
+[Unit]
+Description=Restart the Drishya API when its own healthcheck says it is unhealthy
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/drishya-watchdog.sh
+UNIT
+)
+
+TIMER_B64=$(cat <<'UNIT' | base64 | tr -d '\n'
+[Unit]
+Description=Run the Drishya watchdog every two minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
+UNIT
+)
+
 run_step "Installing the watchdog that acts on the healthcheck" 3 "
 set -e
 echo $WATCHDOG_B64 | base64 -d > /usr/local/bin/drishya-watchdog.sh
 chmod +x /usr/local/bin/drishya-watchdog.sh
-printf '%s\n' '*/2 * * * * root /usr/local/bin/drishya-watchdog.sh' > /etc/cron.d/drishya-watchdog
-chmod 644 /etc/cron.d/drishya-watchdog
-systemctl restart crond 2>/dev/null || systemctl restart cron 2>/dev/null || true
 bash -n /usr/local/bin/drishya-watchdog.sh && echo 'watchdog script parses'
 /usr/local/bin/drishya-watchdog.sh && echo 'watchdog dry run exited 0'
-cat /etc/cron.d/drishya-watchdog
+
+if command -v systemctl >/dev/null 2>&1; then
+  echo $SERVICE_B64 | base64 -d > /etc/systemd/system/drishya-watchdog.service
+  echo $TIMER_B64   | base64 -d > /etc/systemd/system/drishya-watchdog.timer
+  chmod 644 /etc/systemd/system/drishya-watchdog.service /etc/systemd/system/drishya-watchdog.timer
+  systemctl daemon-reload
+  systemctl enable --now drishya-watchdog.timer
+  echo \"timer enabled: \$(systemctl is-enabled drishya-watchdog.timer), \$(systemctl is-active drishya-watchdog.timer)\"
+  systemctl list-timers drishya-watchdog.timer --no-pager --all | sed -n '2p'
+elif [ -d /etc/cron.d ]; then
+  printf '%s\\n' '*/2 * * * * root /usr/local/bin/drishya-watchdog.sh' > /etc/cron.d/drishya-watchdog
+  chmod 644 /etc/cron.d/drishya-watchdog
+  systemctl restart crond 2>/dev/null || systemctl restart cron 2>/dev/null || true
+  echo 'installed via cron.d'
+else
+  echo 'ERROR: neither systemd nor /etc/cron.d is available; nothing will run the watchdog.'
+  exit 1
+fi
 "
 
 # --- 5. did it work -------------------------------------------------------
