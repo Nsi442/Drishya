@@ -36,6 +36,8 @@ INSTANCE="${INSTANCE:-$(aws cloudformation describe-stacks --region "$REGION" --
     --query "Stacks[0].Outputs[?OutputKey=='InstanceId'].OutputValue" --output text 2>/dev/null)}"
 SITE=$(aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK" \
     --query "Stacks[0].Outputs[?OutputKey=='SiteUrl'].OutputValue" --output text 2>/dev/null || echo '')
+SITE_DNS=$(aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK" \
+    --query "Stacks[0].Outputs[?OutputKey=='SiteDnsName'].OutputValue" --output text 2>/dev/null || echo '')
 [ -n "$INSTANCE" ] && [ "$INSTANCE" != "None" ] || die "Could not find the instance id."
 echo "instance: $INSTANCE"
 
@@ -109,7 +111,7 @@ if [ -n "$SITE" ]; then
             echo "readiness: up"
             curl -fsS --max-time 10 -XPOST "$SITE/api/auth/demo-login" \
                  -H 'Content-Type: application/json' -d '{"role":"vendor_admin"}' >/dev/null \
-                && { echo "demo-login: ok"; echo; echo "  Back up: $SITE"; exit 0; }
+                && { echo "demo-login: ok"; echo; echo "  Back up: $SITE"; [ -n "$SITE_DNS" ] && echo "  By name: $SITE_DNS"; exit 0; }
         fi
         sleep 10
     done

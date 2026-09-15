@@ -42,10 +42,13 @@ INSTANCE="${INSTANCE:-$(aws cloudformation describe-stacks --region "$REGION" \
     --output text 2>/dev/null)}"
 SITE=$(aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK" \
     --query "Stacks[0].Outputs[?OutputKey=='SiteUrl'].OutputValue" --output text 2>/dev/null || echo '')
+SITE_DNS=$(aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK" \
+    --query "Stacks[0].Outputs[?OutputKey=='SiteDnsName'].OutputValue" --output text 2>/dev/null || echo '')
 
 [ -n "$INSTANCE" ] && [ "$INSTANCE" != "None" ] || die "Could not find the instance id. Is the stack deployed?"
 echo "instance: $INSTANCE"
 echo "site    : ${SITE:-unknown}"
+[ -n "$SITE_DNS" ] && echo "by name : $SITE_DNS   <- use this one on a phone"
 
 # Polled rather than `ssm wait command-executed`, which gives up after about a
 # hundred seconds. Nothing here is that slow, but the failure mode of a waiter
