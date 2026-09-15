@@ -5,6 +5,7 @@ import com.drishya.backend.domain.Driver;
 import com.drishya.backend.domain.FulfilmentCentre;
 import com.drishya.backend.domain.GeoPoint;
 import com.drishya.backend.domain.GoodsReceipt;
+import com.drishya.backend.domain.Lane;
 import com.drishya.backend.domain.Incident;
 import com.drishya.backend.domain.Place;
 import com.drishya.backend.domain.ProofOfDelivery;
@@ -26,18 +27,22 @@ import com.drishya.backend.repo.DockRepository;
 import com.drishya.backend.repo.DriverRepository;
 import com.drishya.backend.repo.FulfilmentCentreRepository;
 import com.drishya.backend.repo.IncidentRepository;
+import com.drishya.backend.repo.LaneRepository;
 import com.drishya.backend.repo.ShipmentRepository;
 import com.drishya.backend.repo.VehicleRepository;
 import com.drishya.backend.repo.VendorRepository;
 import com.drishya.backend.seed.GeoUtil;
 import com.drishya.backend.seed.Rng;
+import com.drishya.backend.service.eta.FeatureBuilder;
 import com.drishya.backend.service.routing.RoutePlanner;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,12 +61,15 @@ public class ShipmentService {
     private final AlertService alertService;
     private final Mapper mapper;
     private final RoutePlanner routePlanner;
+    private final LaneRepository lanes;
+    private final FeatureBuilder featureBuilder;
 
     public ShipmentService(ShipmentRepository shipments, VendorRepository vendors,
                            FulfilmentCentreRepository centres, VehicleRepository vehicles,
                            DriverRepository drivers, IncidentRepository incidents,
                            DockRepository docks, AlertService alertService, Mapper mapper,
-                           RoutePlanner routePlanner) {
+                           RoutePlanner routePlanner, LaneRepository lanes,
+                           FeatureBuilder featureBuilder) {
         this.shipments = shipments;
         this.vendors = vendors;
         this.centres = centres;
@@ -72,6 +80,8 @@ public class ShipmentService {
         this.alertService = alertService;
         this.mapper = mapper;
         this.routePlanner = routePlanner;
+        this.lanes = lanes;
+        this.featureBuilder = featureBuilder;
     }
 
     // --- reads -----------------------------------------------------------
@@ -227,9 +237,22 @@ public class ShipmentService {
         List<GeoPoint> route = plan.points();
         int distanceKm = (int) Math.round(plan.distanceKm());
 
-        Instant promisedAt = request.slotStart() != null
-                ? Instant.ofEpochMilli(request.slotStart())
-                : now.plus(36, ChronoUnit.HOURS);
+        Instant pickupAt = request.pickupAt() != null
+                ? Instant.ofEpochMilli(request.pickupAt()) : now.plus(4, ChronoUnit.HOURS);
+
+        // What the vendor agreed to, in order of how much it is worth.
+        //
+        // A slot the vendor typed in is an agreement and wins outright. Failing
+        // that the engine is asked what this lane takes leaving at the stated
+        // pickup time, which is a promise derived from the two things a booking
+        // actually knows. Only with neither does the flat fallback apply.
+        Instant agreedSlot = request.slotStart() != null
+                ? Instant.ofEpochMilli(request.slotStart()) : null;
+        Optional<Duration> engineEstimate = agreedSlot != null ? Optional.empty()
+                : featureBuilder.timeFromDeparture(matchLane(fc, originPoint), pickupAt);
+
+        Instant promisedAt = agreedSlot != null ? agreedSlot
+                : engineEstimate.map(pickupAt::plus).orElseGet(() -> now.plus(36, ChronoUnit.HOURS));
 
         Shipment s = new Shipment();
         s.setId("SHP-" + (24001 + sequence));
@@ -256,18 +279,25 @@ public class ShipmentService {
         s.setRemainingKm(distanceKm);
         s.setSpeedKmph(0);
         s.setBookedAt(now);
-        s.setPickupAt(request.pickupAt() != null
-                ? Instant.ofEpochMilli(request.pickupAt()) : now.plus(4, ChronoUnit.HOURS));
+        s.setPickupAt(pickupAt);
         s.setPromisedAt(promisedAt);
         // A brand-new booking is on time by definition — nothing has happened yet.
         s.setPredictedAt(promisedAt);
         s.setDelayMin(0);
         s.setSlotStart(promisedAt);
         s.setSlotEnd(promisedAt.plus(1, ChronoUnit.HOURS));
-        // A window the vendor chose is an agreement; one derived from the
-        // fallback above is a placeholder for the engine to replace at
-        // departure. They are the same column, so the difference is recorded.
-        s.setSlotAgreed(request.slotStart() != null);
+        // Whether this window is a promise or a placeholder. They are the same
+        // column, and the difference decides whether EtaService rewrites it on
+        // the first prediction cycle.
+        //
+        // A vendor's own slot is an agreement. So is one the engine costed from
+        // the pickup time: it was derived from what the vendor told us and the
+        // history of the road, which is everything a booking can know, and
+        // moving it later to match the estimate would make every consignment
+        // permanently, perfectly on time. Only the flat fallback stays a
+        // placeholder, because a lane the cluster has never seen genuinely has
+        // nothing to promise until the vehicle is on it.
+        s.setSlotAgreed(agreedSlot != null || engineEstimate.isPresent());
         s.setCommodity(request.commodity());
         s.setCartons(request.cartons());
         s.setWeightKg(request.weightKg());
@@ -305,6 +335,19 @@ public class ShipmentService {
      * <p>Refuses to move backwards: the timeline is a record of what happened,
      * and a consignment that has been received cannot un-arrive.
      */
+    /**
+     * The corridor the cluster already has history for, if this is one.
+     *
+     * <p>Same lookup and same tolerance {@code TripService} uses when a trip
+     * starts, so the lane a booking is costed against is the lane the trip will
+     * later be predicted on. Two different answers to "which road is this"
+     * would put the promise and the estimate on different corridors.
+     */
+    private Lane matchLane(FulfilmentCentre fc, GeoPoint origin) {
+        return lanes.findNearestOrigin(fc.getId(), origin.getLat(), origin.getLng(),
+                TripService.LANE_MATCH_TOLERANCE_M).orElse(null);
+    }
+
     @Transactional
     public ShipmentDto advance(String id, Requests.AdvanceShipment request,
                                CallerService.Caller caller) {

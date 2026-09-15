@@ -8,7 +8,7 @@ import useDocumentTitle from '../../hooks/useDocumentTitle.js'
 import useNow from '../../hooks/useNow.js'
 import { sortRows } from '../../services/client.js'
 import { ACTIVE_STATUSES, SHIPMENT_STATUS } from '../../lib/constants.js'
-import { formatTime, formatNumber } from '../../lib/format.js'
+import { formatNumber, formatTime, minutesBetween } from '../../lib/format.js'
 import { downloadCSV } from '../../lib/csv.js'
 import { refData as db } from '../../services/referenceData.js'
 import Table, { TableShell, TableToolbar } from '../../components/ui/Table.jsx'
@@ -62,7 +62,7 @@ export default function ArrivalBoard() {
       })
       .map((s) => ({
         ...s,
-        etaDeltaMin: Math.round((s.predictedAt - s.slotStart) / 60000),
+        etaDeltaMin: minutesBetween(s.predictedAt, s.slotStart),
         dockName: s.dockId ? db.docks.find((d) => d.id === s.dockId)?.name ?? null : null,
         docsClear: s.documents.every((d) => d.status === 'valid' || d.status === 'pending'),
       }))
