@@ -1,5 +1,6 @@
 // Shared house style for Drishya / TCS ILP RTTV documents.
 const d = require('docx');
+const fs = require('fs');
 
 const NAVY = '1F3864';
 const ACCENT = '2E75B6';
@@ -143,6 +144,96 @@ function table(headers, rows, widths) {
   });
 }
 
+/**
+ * Reads a JPEG's pixel dimensions from its SOF marker.
+ *
+ * <p>The aspect ratio has to come from the file. Passing a height by hand means
+ * every recapture at a different viewport silently stretches every figure, and
+ * a stretched screenshot is the kind of thing nobody reports and everybody
+ * notices.
+ */
+function jpegSize(file) {
+  const buf = fs.readFileSync(file);
+  let i = 2;                                  // past SOI
+  while (i < buf.length) {
+    if (buf[i] !== 0xff) { i++; continue }
+    const marker = buf[i + 1];
+    // SOF0..SOF15, skipping the four that are not frame headers.
+    if (marker >= 0xc0 && marker <= 0xcf &&
+        marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      return { height: buf.readUInt16BE(i + 5), width: buf.readUInt16BE(i + 7) };
+    }
+    i += 2 + buf.readUInt16BE(i + 2);
+  }
+  throw new Error(`no SOF marker in ${file}`);
+}
+
+/** The text column, in the px units docx image transformations take. */
+const TEXT_PX = Math.round((TEXT_WIDTH / 1440) * 96);
+
+/** One screenshot, scaled to a width in px, with its aspect ratio preserved. */
+function image(file, widthPx = TEXT_PX) {
+  const { width, height } = jpegSize(file);
+  return new d.ImageRun({
+    type: 'jpg',
+    data: fs.readFileSync(file),
+    transformation: { width: widthPx, height: Math.round(widthPx * height / width) },
+  });
+}
+
+/** A full-width screenshot with its caption underneath. */
+function figure(file, captionText, widthPx = TEXT_PX) {
+  return [
+    new d.Paragraph({
+      spacing: { before: 160, after: 40 },
+      alignment: d.AlignmentType.CENTER,
+      children: [image(file, widthPx)],
+    }),
+    new d.Paragraph({
+      spacing: { after: 200 },
+      alignment: d.AlignmentType.CENTER,
+      children: [new d.TextRun({ text: captionText, font: FONT, size: 18, italics: true, color: MUTED })],
+    }),
+  ];
+}
+
+/**
+ * Several screenshots side by side, in a borderless table.
+ *
+ * <p>Phone screens are twice as tall as they are wide. Placed full width one
+ * after another they would run to a page each, so they sit in a row and share
+ * the column between them.
+ */
+function figureRow(files, captionText) {
+  const each = Math.floor((TEXT_PX - 16 * (files.length - 1)) / files.length);
+  const colDxa = Math.round(TEXT_WIDTH / files.length);
+  const none = { style: d.BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+  const borders = { top: none, bottom: none, left: none, right: none };
+  return [
+    new d.Table({
+      columnWidths: files.map(() => colDxa),
+      width: { size: colDxa * files.length, type: d.WidthType.DXA },
+      rows: [new d.TableRow({
+        children: files.map((f) => new d.TableCell({
+          width: { size: colDxa, type: d.WidthType.DXA },
+          borders,
+          margins: { top: 40, bottom: 40, left: 40, right: 40 },
+          children: [new d.Paragraph({
+            alignment: d.AlignmentType.CENTER,
+            spacing: { after: 0 },
+            children: [image(f, each)],
+          })],
+        })),
+      })],
+    }),
+    new d.Paragraph({
+      spacing: { before: 60, after: 200 },
+      alignment: d.AlignmentType.CENTER,
+      children: [new d.TextRun({ text: captionText, font: FONT, size: 18, italics: true, color: MUTED })],
+    }),
+  ];
+}
+
 function spacer() {
   return new d.Paragraph({ spacing: { after: 120 }, children: [] });
 }
@@ -150,4 +241,5 @@ function spacer() {
 module.exports = {
   d, NAVY, ACCENT, FILL, MUTED, FONT, CODE_FONT, TEXT_WIDTH,
   body, rich, h1, h2, h3, bullet, numbered, code, caption, table, spacer,
+  image, figure, figureRow, jpegSize, TEXT_PX,
 };

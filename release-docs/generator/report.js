@@ -2,6 +2,8 @@ const fs = require('fs');
 const S = require('./style');
 const d = S.d;
 
+const SHOT = (n) => require('path').join(__dirname, 'shots', n + '.jpg');
+
 const TITLE = 'Final MVP Report';
 const SUBTITLE = 'Drishya — Real-Time Transport Visibility (RTTV)';
 
@@ -91,6 +93,9 @@ const purpose = [
       ['Fulfilment centre (Imran)', 'imran@fcbhiwandi.example', 'Books the dock roughly an hour before arrival, gates the vehicle in and out, raises the GRN.'],
     ],
     [22, 34, 44]),
+  ...S.figure(SHOT('13-fc-arrival-board'),
+    'Figure 1: The receiving desk’s arrival board. The promised slot and the live estimate ' +
+    'sit in adjacent columns with the variance between them — the gap the product exists to close.'),
   S.body(
     'Dock authority sits with the receiving desk on purpose. A vendor cannot know the state of a yard they ' +
     'cannot see, so the vendor is notified of the dock rather than choosing it, and the driver is given the ' +
@@ -404,7 +409,55 @@ const outputs = [
   S.numbered('The geofence fires GATE_IN on the zone transition, not on every fix inside it. Imran gates the vehicle in, receives against the ASN and raises the GRN; Ramesh signs the proof of delivery.'),
   S.numbered('Every prediction made during the trip is scored against the actual dock-in, which is what makes the accuracy endpoint measured rather than claimed.'),
 
-  S.h2('6.2  Test results'),
+  S.h2('6.2  The vendor portal'),
+  S.body(
+    'Priya books the consignment, proves the paperwork and watches the vehicle. She has no dock '
+    + 'controls at all — that authority moved to the receiving desk, and she is notified of the '
+    + 'decision rather than making it.'),
+  ...S.figure(SHOT('03-vendor-new-shipment'),
+    'Figure 2: Booking, step one of five. The summary on the right fills in as the form is completed, ' +
+    'and the delivery window is set from the pickup time rather than guessed at.'),
+  ...S.figure(SHOT('04-vendor-shipment-detail'),
+    'Figure 3: One consignment. "Promised slot" and "predicted arrival" are shown side by side and ' +
+    'neither overwrites the other; the driver, vehicle, seal and e-way bill are one glance away.'),
+  ...S.figure(SHOT('06-vendor-documents'),
+    'Figure 4: Every document across every consignment, with its validation state. Two here will not ' +
+    'clear the gate, and the page says so before the vehicles reach it rather than afterwards.'),
+  ...S.figure(SHOT('02-vendor-shipments'),
+    'Figure 5: The consignment list, filtered and sorted by what a dispatcher actually asks of it.'),
+  ...S.figure(SHOT('01-vendor-dashboard'),
+    'Figure 6: The vendor dashboard. Counts first, then where everything is, then what is at risk.'),
+
+  S.h2('6.3  The driver portal'),
+  S.body(
+    'Ramesh starts the trip — the vendor no longer does — and the portal is built for a phone held ' +
+    'in one hand at a gate. It states the connection plainly, because a driver in a dead zone needs ' +
+    'to know whether what they just recorded has been sent.'),
+  ...S.figureRow(
+    [SHOT('08-driver-today'), SHOT('09-driver-trip'), SHOT('11-driver-pod')],
+    'Figures 7–9: Today’s trips with the next one expanded; the trip itself, carrying the dock the ' +
+    'receiving desk booked; and proof of delivery, counted and signed at the bay.'),
+
+  S.h2('6.4  The receiving desk'),
+  S.body(
+    'Imran sees every vendor booked into his site and no vendor booked into any other. He books the ' +
+    'dock, gates the vehicle in, receives against the advance shipping notice and raises the goods ' +
+    'receipt.'),
+  ...S.figure(SHOT('12-fc-dashboard'),
+    'Figure 10: The site at a glance — what is inbound, what is at the gate, and what is on each bay.'),
+  ...S.figure(SHOT('15-fc-dock-scheduler'),
+    'Figure 11: The dock gantt. Blocks are dragged to reschedule, and a clash is flagged here rather ' +
+    'than discovered at the gate.'),
+  ...S.figure(SHOT('16-fc-receiving'),
+    'Figure 12: Receiving. The count is checked against the advance shipping notice and each document ' +
+    'against its validation state, before anything is accepted.'),
+  ...S.figure(SHOT('14-fc-yard'),
+    'Figure 13: The yard, with dwell time per vehicle and the detention thresholds that follow from it.'),
+  ...S.figure(SHOT('17-fc-analytics'),
+    'Figure 14: Site analytics — inbound volume, dock utilisation by hour, and what actually goes ' +
+    'wrong at receiving, categorised.'),
+
+  S.h2('6.5  Test results'),
   S.body(
     'Four layers of testing, because on this project each layer repeatedly passed while the layer above it ' +
     'was broken. curl proved the API healthy on a day the browser could not sign in at all; a ' +
@@ -423,7 +476,7 @@ const outputs = [
     ],
     [26, 16, 58]),
 
-  S.h2('6.3  Measured results'),
+  S.h2('6.6  Measured results'),
   S.body('Numbers taken from instrumented runs, not from estimates.'),
   S.caption('Table 10: Before and after, on changes that were measured'),
   S.table(
