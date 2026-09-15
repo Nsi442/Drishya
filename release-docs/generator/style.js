@@ -103,9 +103,14 @@ function cellPara(text, { bold = false, color = '000000', size = 20 } = {}) {
 }
 
 // Horizontal borders only, banded body rows, no outer box.
-function table(headers, rows, widths) {
+/**
+ * @param totalDxa the text width to fill. Defaults to the portrait column;
+ *   a landscape section must pass its own, or the table sits two thirds of
+ *   the way across the page looking like a mistake.
+ */
+function table(headers, rows, widths, totalDxa = TEXT_WIDTH) {
   const total = widths.reduce((a, b) => a + b, 0);
-  const scaled = widths.map((w) => Math.round((w / total) * TEXT_WIDTH));
+  const scaled = widths.map((w) => Math.round((w / total) * totalDxa));
 
   const borders = {
     top: { style: d.BorderStyle.SINGLE, size: 4, color: RULE },
@@ -139,7 +144,7 @@ function table(headers, rows, widths) {
 
   return new d.Table({
     columnWidths: scaled,
-    width: { size: TEXT_WIDTH, type: d.WidthType.DXA },
+    width: { size: totalDxa, type: d.WidthType.DXA },
     rows: [headerRow, ...bodyRows],
   });
 }
