@@ -152,6 +152,18 @@ function table(headers, rows, widths) {
  * a stretched screenshot is the kind of thing nobody reports and everybody
  * notices.
  */
+/** A PNG's pixel dimensions, read from the IHDR chunk. */
+function pngSize(file) {
+  const buf = fs.readFileSync(file);
+  if (buf.readUInt32BE(0) !== 0x89504e47) throw new Error(`${file} is not a PNG`);
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
+
+/** Dimensions of whichever of the two formats this is. */
+function imageSize(file) {
+  return /\.png$/i.test(file) ? pngSize(file) : jpegSize(file);
+}
+
 function jpegSize(file) {
   const buf = fs.readFileSync(file);
   let i = 2;                                  // past SOI
@@ -173,9 +185,9 @@ const TEXT_PX = Math.round((TEXT_WIDTH / 1440) * 96);
 
 /** One screenshot, scaled to a width in px, with its aspect ratio preserved. */
 function image(file, widthPx = TEXT_PX) {
-  const { width, height } = jpegSize(file);
+  const { width, height } = imageSize(file);
   return new d.ImageRun({
-    type: 'jpg',
+    type: /\.png$/i.test(file) ? 'png' : 'jpg',
     data: fs.readFileSync(file),
     transformation: { width: widthPx, height: Math.round(widthPx * height / width) },
   });
@@ -241,5 +253,5 @@ function spacer() {
 module.exports = {
   d, NAVY, ACCENT, FILL, MUTED, FONT, CODE_FONT, TEXT_WIDTH,
   body, rich, h1, h2, h3, bullet, numbered, code, caption, table, spacer,
-  image, figure, figureRow, jpegSize, TEXT_PX,
+  image, figure, figureRow, jpegSize, pngSize, imageSize, TEXT_PX, TEXT_WIDTH,
 };
