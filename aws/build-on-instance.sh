@@ -241,7 +241,7 @@ docker rm -f api web 2>/dev/null || true
 docker run -d --name api --network drishya --restart always \
   --memory=\$LIM --memory-swap=\$SWP \
   --env-file /etc/drishya.env \
-  -e JAVA_TOOL_OPTIONS="\$JVM_OPTS" \
+  -e JAVA_TOOL_OPTIONS=\"$JVM_OPTS\" \
   drishya-api:local >/dev/null
 docker run -d --name web --network drishya --restart always -p 80:80 drishya-web:local >/dev/null
 sleep 60

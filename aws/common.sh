@@ -35,7 +35,15 @@ running=$(docker inspect -f '{{.State.Running}}' api 2>/dev/null || echo false)
 # So probe the site the way a person reaches it: through nginx, from the host,
 # with a short deadline. Two consecutive failures, to avoid restarting on one
 # slow moment.
-probe() { curl -fsS --max-time 8 -o /dev/null http://localhost/api/health 2>/dev/null; }
+#
+# The path must be one that ANSWERS. The first version probed /api/health,
+# which no controller serves and Spring Security does not permit, so -f saw a
+# 401 and treated a perfectly healthy site as dead — a watchdog that restarts
+# the API every two minutes for ever. /actuator/health is the permitted one,
+# nginx has a location for it, and it is not the path Docker's own healthcheck
+# keeps warm (that is /actuator/health/readiness, from inside the container),
+# so it still exercises nginx, the host network and a class load.
+probe() { curl -fsS --max-time 8 -o /dev/null http://localhost/actuator/health 2>/dev/null; }
 if [ "$state" = healthy ] && [ "$running" = true ]; then
   if ! probe && ! probe; then
     echo "$(date -Is) docker says healthy but the site does not answer; restarting" >> "$LOG"

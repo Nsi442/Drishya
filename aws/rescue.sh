@@ -177,6 +177,7 @@ df -h / | tail -1
 
 run_step "Applying a memory limit to the API" 5 "
 set -e
+$MEMORY_SIZING
 if [ -z \"\$(docker ps -aq -f name=^api\$)\" ]; then
   # No container at all. This is the only path that needs an image, and it is
   # the only path that may create one from scratch.
@@ -192,11 +193,11 @@ if [ -z \"\$(docker ps -aq -f name=^api\$)\" ]; then
   fi
   docker network create drishya 2>/dev/null || true
   docker run -d --name api --network drishya --restart always \
-    --memory=700m --memory-swap=1400m \
+    --memory=\$LIM --memory-swap=\$SWP \
     --env-file /etc/drishya.env \
-    -e JAVA_TOOL_OPTIONS="\$JVM_OPTS" \
+    -e JAVA_TOOL_OPTIONS=\"$JVM_OPTS\" \
     drishya-api:local >/dev/null
-  echo 'api was missing; started it from drishya-api:local under a 700m limit'
+  echo \"api was missing; started it from drishya-api:local under a \$LIM limit\"
 else
   # The container exists, so change its ceiling IN PLACE rather than recreating
   # it.
@@ -212,9 +213,6 @@ else
   # 'docker update' writes the cgroup limit and the container's stored host
   # config, so it survives the restarts that --restart always and the watchdog
   # perform. No downtime, nothing else touched.
-  TOTAL=\$(free -m | awk '/^Mem:/{print \$2}')
-  if [ \"\$TOTAL\" -ge 1500 ]; then LIM=1000m; SWP=2000m; else LIM=700m; SWP=1400m; fi
-  echo \"host memory: \${TOTAL}m -> container limit \$LIM\"
   docker update --memory=\$LIM --memory-swap=\$SWP api >/dev/null 2>&1 \
     || docker update --memory=\$LIM api >/dev/null 2>&1 \
     || { echo 'ERROR: could not set a memory limit on the api container.'; exit 1; }
@@ -243,13 +241,13 @@ else
       --memory=\$LIM --memory-swap=\$SWP \
       --log-driver \"\$LOGDRV\" \$LOGOPTS \
       --env-file /etc/drishya.env \
-      -e JAVA_TOOL_OPTIONS=\"\$JVM_OPTS\" \
+      -e JAVA_TOOL_OPTIONS=\"$JVM_OPTS\" \
       \"\$IMG\" >/dev/null
     sleep 25
   fi
   APPLIED=\$(docker inspect -f '{{.HostConfig.Memory}}' api)
   echo \"applied limit: \$((APPLIED / 1024 / 1024))m\"
-  echo \"heap flags in effect: \$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' api | grep JAVA_TOOL_OPTIONS || echo '(none set \u2014 the JVM sizes from the cgroup limit above)')\"
+  echo \"heap flags in effect: \$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' api | grep JAVA_TOOL_OPTIONS || echo '(none set - the JVM sizes from the cgroup limit above)')\"
 fi
 
 if [ -z \"\$(docker ps -q -f name=^web\$)\" ]; then
@@ -297,9 +295,20 @@ echo
 echo '=== containers ==='
 docker ps --format '{{.Names}}\t{{.Status}}'
 echo
+# Wait for the API to finish starting before judging it. The previous version
+# curled immediately, and on a run where step 3 had just recreated the
+# container it reported 502 against a container that had been up thirteen
+# seconds — a cold JVM, not a fault, printed as the script's verdict.
+for _ in $(seq 1 30); do
+  h=\$(docker inspect -f '{{.State.Health.Status}}' api 2>/dev/null || echo missing)
+  [ \"\$h\" = starting ] || break
+  sleep 5
+done
+echo \"api health: \$h\"
+echo
 echo '=== through nginx, from the box ==='
 curl -s -o /dev/null -w 'GET /            %{http_code}  %{time_total}s\n' http://localhost/ || true
-curl -s -o /dev/null -w 'GET /api/health  %{http_code}  %{time_total}s\n' http://localhost/actuator/health || true
+curl -s -o /dev/null -w 'GET /actuator/health %{http_code}  %{time_total}s\n' http://localhost/actuator/health || true
 "
 
 say "Done"
