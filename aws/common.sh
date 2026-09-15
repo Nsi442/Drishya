@@ -22,6 +22,30 @@ LOG=/var/log/drishya-watchdog.log
 state=$(docker inspect -f '{{.State.Health.Status}}' api 2>/dev/null || echo missing)
 running=$(docker inspect -f '{{.State.Running}}' api 2>/dev/null || echo false)
 
+# Docker's healthcheck is not enough on its own, and this is why.
+#
+# It probes /actuator/health/readiness every thirty seconds, so that path's
+# classes stay loaded and warm. When Metaspace filled, the JVM stayed alive and
+# that warm probe kept answering — Docker reported healthy, OOMKilled was false
+# and the restart count was zero — while every request that needed to load a
+# new class died with OutOfMemoryError and nginx timed out after sixty seconds.
+# Alive but wedged, which is the exact case this watchdog exists for, invisible
+# to the signal it was reading.
+#
+# So probe the site the way a person reaches it: through nginx, from the host,
+# with a short deadline. Two consecutive failures, to avoid restarting on one
+# slow moment.
+probe() { curl -fsS --max-time 8 -o /dev/null http://localhost/api/health 2>/dev/null; }
+if [ "$state" = healthy ] && [ "$running" = true ]; then
+  if ! probe && ! probe; then
+    echo "$(date -Is) docker says healthy but the site does not answer; restarting" >> "$LOG"
+    free -m | sed -n '2p' >> "$LOG"
+    docker logs --tail 5 api 2>&1 | grep -i "OutOfMemoryError" >> "$LOG" || true
+    docker restart api >/dev/null 2>&1 || true
+    exit 0
+  fi
+fi
+
 case "$state" in
   healthy|starting)
     exit 0 ;;
@@ -101,6 +125,20 @@ fi"
 #
 # Emits LIM and SWP. Embedded inside a run_step string, so the dollars are
 # escaped for the heredoc that carries it.
+# The JVM flags, shared for the same reason the sizing is.
+#
+# Metaspace at 128m was too small for this stack — Spring Boot 4, Hibernate 7,
+# Jackson 3, springdoc and ONNX Runtime — and it filled after about half an hour
+# of use, wedging the API without exiting. The heap percentage comes down to
+# make room inside the same container limit: 50% of 1000m is a 500m heap, plus
+# 256m of metaspace, plus overhead, still fits.
+#
+# ExitOnOutOfMemoryError is the important one. A JVM that stays alive after an
+# OutOfMemoryError is the state nothing could see: Docker healthy, OOMKilled
+# false, restarts zero, and every real request timing out. Exiting makes
+# --restart always do its job and turns an invisible wedge into a restart.
+JVM_OPTS='-XX:MaxRAMPercentage=50 -XX:MaxMetaspaceSize=256m -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError'
+
 MEMORY_SIZING='
 TOTAL=$(free -m | awk "/^Mem:/{print \$2}")
 if [ "$TOTAL" -ge 1500 ]; then LIM=1000m; SWP=2000m; else LIM=700m; SWP=1400m; fi

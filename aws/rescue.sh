@@ -194,7 +194,7 @@ if [ -z \"\$(docker ps -aq -f name=^api\$)\" ]; then
   docker run -d --name api --network drishya --restart always \
     --memory=700m --memory-swap=1400m \
     --env-file /etc/drishya.env \
-    -e JAVA_TOOL_OPTIONS='-XX:MaxRAMPercentage=60 -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC' \
+    -e JAVA_TOOL_OPTIONS="\$JVM_OPTS" \
     drishya-api:local >/dev/null
   echo 'api was missing; started it from drishya-api:local under a 700m limit'
 else
@@ -218,6 +218,35 @@ else
   docker update --memory=\$LIM --memory-swap=\$SWP api >/dev/null 2>&1 \
     || docker update --memory=\$LIM api >/dev/null 2>&1 \
     || { echo 'ERROR: could not set a memory limit on the api container.'; exit 1; }
+  # The memory limit can be changed in place. The JVM flags cannot — they are
+  # environment, fixed when the container was created — so if they are stale the
+  # container has to be recreated. That is the only way the metaspace fix
+  # reaches a running instance without a fifteen-minute rebuild.
+  #
+  # Recreated from what the CONTAINER already uses, not from assumptions: its
+  # own image, its own log driver and options. An earlier version of this
+  # script hard-coded drishya-api:local and a bare run, which on an
+  # ECR-provisioned instance would have pinned the wrong image and dropped the
+  # CloudWatch log stream that is the only way to read a log without a shell.
+  WANT='-XX:MaxMetaspaceSize=256m'
+  HAVE=\$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' api | grep JAVA_TOOL_OPTIONS || true)
+  # -- and -F, because the pattern begins with a dash and contains none of
+  # grep's metacharacters: without them grep reads -XX:... as an option, the
+  # match always fails, and the container is recreated on every single run.
+  if ! printf '%s' \"\$HAVE\" | grep -qF -- \"\$WANT\"; then
+    IMG=\$(docker inspect -f '{{.Config.Image}}' api)
+    LOGDRV=\$(docker inspect -f '{{.HostConfig.LogConfig.Type}}' api)
+    LOGOPTS=\$(docker inspect -f '{{range \$k, \$v := .HostConfig.LogConfig.Config}}--log-opt {{\$k}}={{\$v}} {{end}}' api)
+    echo \"JVM flags are stale; recreating from \$IMG (log driver: \$LOGDRV)\"
+    docker rm -f api >/dev/null 2>&1 || true
+    docker run -d --name api --network drishya --restart always \
+      --memory=\$LIM --memory-swap=\$SWP \
+      --log-driver \"\$LOGDRV\" \$LOGOPTS \
+      --env-file /etc/drishya.env \
+      -e JAVA_TOOL_OPTIONS=\"\$JVM_OPTS\" \
+      \"\$IMG\" >/dev/null
+    sleep 25
+  fi
   APPLIED=\$(docker inspect -f '{{.HostConfig.Memory}}' api)
   echo \"applied limit: \$((APPLIED / 1024 / 1024))m\"
   echo \"heap flags in effect: \$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' api | grep JAVA_TOOL_OPTIONS || echo '(none set \u2014 the JVM sizes from the cgroup limit above)')\"

@@ -420,6 +420,19 @@ arrived at. Proved by deleting `segment_speed_history` and then `lanes` entirely
 stayed at pickup + 3.2 h instead of reverting to 36 hours. Only the lane branch marks the window
 agreed; the coarser two stay placeholders for `EtaService` to replace.
 
+**A JVM that survives an OutOfMemoryError is invisible to everything watching it.** The deployed
+API wedged with `OutOfMemoryError: Metaspace` at the 128 MB cap — too small for Spring Boot 4,
+Hibernate 7, Jackson 3, springdoc and ONNX Runtime together. The process stayed alive, so Docker
+reported `oomKilled=false`, `RestartCount=0` and **healthy**, `--restart always` had nothing to
+restart, and the watchdog never fired. Meanwhile every request needing to load a class died and
+nginx returned 504 after sixty seconds. The healthcheck kept passing because it probes
+`/actuator/health/readiness` every thirty seconds, so that one path's classes stay loaded and warm
+— **a probe that only exercises a warm path cannot see a wedged JVM.** Three changes, and all three
+are needed: metaspace to 256 MB with the heap percentage down to 50 so both fit the same container
+limit; `-XX:+ExitOnOutOfMemoryError`, so the JVM dies instead of lingering and `--restart always`
+does its job; and the watchdog now probes `http://localhost/api/health` through nginx, restarting
+on two consecutive failures even when Docker calls the container healthy.
+
 **Absent is not zero — and the caller is usually where it goes wrong.** `formatTime`/`formatRelative` handed a
 null to `new Date(null)` — epoch 0 — and rendered "ETA 05:30 am · 20695d ago" in the same
 typeface as a real arrival. `DelayPill` defaulted a missing delay to 0 and displayed a confident
