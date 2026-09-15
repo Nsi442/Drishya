@@ -185,3 +185,29 @@ cat <<'NOTE'
   healthy database  -> the pool is exhausted. Pool size is 5 by design; a leak
   or a long transaction is holding them.
 NOTE
+
+# The watchdog keeps the only contemporaneous record of a wedge: when it fired
+# and how much memory was free at that moment. Added after the fact — this
+# script predates the watchdog, so it was answering "is the database unwell"
+# while the evidence for "did the API wedge" sat unread on the instance.
+run_step "What the watchdog has seen" 3 "
+echo '=== timer ==='
+systemctl list-timers drishya-watchdog.timer --no-pager --all 2>/dev/null | sed -n '1,2p' || echo 'no timer'
+systemctl is-enabled drishya-watchdog.timer 2>/dev/null || echo 'not enabled'
+echo
+echo '=== restarts it has performed ==='
+if [ -f /var/log/drishya-watchdog.log ]; then
+  wc -l < /var/log/drishya-watchdog.log | xargs echo 'log lines:'
+  echo '--- last 20 ---'
+  tail -20 /var/log/drishya-watchdog.log
+else
+  echo 'no log yet — the watchdog has never had to act'
+fi
+echo
+echo '=== container, right now ==='
+docker inspect -f 'restarts={{.RestartCount}} oomkilled={{.State.OOMKilled}} exit={{.State.ExitCode}} health={{.State.Health.Status}}' api 2>/dev/null || echo 'no api container'
+echo 'memory limit:' \$(docker inspect -f '{{.HostConfig.Memory}}' api 2>/dev/null | awk '{printf \"%dm\", \$1/1024/1024}')
+echo
+echo '=== the JVM own account of its heap ==='
+docker exec api sh -c 'jcmd 1 GC.heap_info 2>/dev/null | head -4' 2>/dev/null || echo '(jcmd unavailable in this image)'
+"

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# The watchdog, and the one place it is installed from.
+# Shared by aws/rescue.sh and aws/build-on-instance.sh: the watchdog, and the
+# container memory sizing. Both were duplicated once and both diverged.
 #
 # WHY THIS IS ITS OWN FILE. Two scripts install this — aws/rescue.sh and
 # aws/build-on-instance.sh — and they each carried their own copy. When Amazon
@@ -9,7 +10,7 @@
 # touched; this is the fix for that, not just for cron.
 #
 # Sourced, not executed. It defines WATCHDOG_STEP, which the caller hands to its
-# own run_step.
+# own run_step, and MEMORY_SIZING, a fragment those steps embed.
 
 WATCHDOG_B64=$(cat <<'WATCHDOG' | base64 | tr -d '\n'
 #!/usr/bin/env bash
@@ -89,3 +90,19 @@ else
   echo 'ERROR: neither systemd nor /etc/cron.d is available; nothing will run the watchdog.'
   exit 1
 fi"
+
+# --- container memory ------------------------------------------------------
+#
+# Sized from the host rather than hard-coded, and shared for the same reason the
+# watchdog is. build-on-instance.sh carried its own 700m, written when the only
+# box was a t3.micro. Run against the t3.small the stack is on now it gave the
+# JVM a 420 MB heap and silently undid the 1000m rescue.sh had just set — a
+# rebuild quietly downgrading the machine it had just finished deploying to.
+#
+# Emits LIM and SWP. Embedded inside a run_step string, so the dollars are
+# escaped for the heredoc that carries it.
+MEMORY_SIZING='
+TOTAL=$(free -m | awk "/^Mem:/{print \$2}")
+if [ "$TOTAL" -ge 1500 ]; then LIM=1000m; SWP=2000m; else LIM=700m; SWP=1400m; fi
+echo "host memory: ${TOTAL}m -> container limit $LIM"
+'

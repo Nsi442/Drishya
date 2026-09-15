@@ -34,6 +34,15 @@ say()  { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 die()  { printf '\n\033[31merror: %s\033[0m\n' "$*" >&2; exit 1; }
 
 command -v aws >/dev/null || die "aws CLI not found."
+
+# The watchdog install and the container memory sizing are shared with the
+# other script that does both; see the header of aws/common.sh. Sourced HERE,
+# at the top, because a step further down uses MEMORY_SIZING and loading it
+# beside its other use left that one unbound.
+COMMON_LIB="$(dirname "${BASH_SOURCE[0]}")/common.sh"
+[ -f "$COMMON_LIB" ] || die "Missing $COMMON_LIB — run this from a full checkout of the repository."
+# shellcheck source=aws/common.sh
+source "$COMMON_LIB"
 aws sts get-caller-identity >/dev/null 2>&1 || die "AWS credentials are not working."
 
 INSTANCE="${INSTANCE:-$(aws cloudformation describe-stacks --region "$REGION" \
@@ -244,12 +253,6 @@ docker ps --format '{{.Names}}\t{{.Status}}'
 # leaving the watchdog script on disk with nothing ever running it. A timer is
 # the native mechanism and needs no package installed.
 
-# The watchdog install is shared with the other script that does it; see the
-# header of aws/watchdog.sh for why it is not copied into both.
-WATCHDOG_LIB="$(dirname "${BASH_SOURCE[0]}")/watchdog.sh"
-[ -f "$WATCHDOG_LIB" ] || die "Missing $WATCHDOG_LIB — run this from a full checkout of the repository."
-# shellcheck source=aws/watchdog.sh
-source "$WATCHDOG_LIB"
 
 run_step "Installing the watchdog that acts on the healthcheck" 3 "$WATCHDOG_STEP"
 

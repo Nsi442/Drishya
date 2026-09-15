@@ -35,6 +35,15 @@ say()  { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 die()  { printf '\n\033[31merror: %s\033[0m\n' "$*" >&2; exit 1; }
 
 command -v aws >/dev/null || die "aws CLI not found."
+
+# The watchdog install and the container memory sizing are shared with the
+# other script that does both; see the header of aws/common.sh. Sourced HERE,
+# at the top, because a step further down uses MEMORY_SIZING and loading it
+# beside its other use left that one unbound.
+COMMON_LIB="$(dirname "${BASH_SOURCE[0]}")/common.sh"
+[ -f "$COMMON_LIB" ] || die "Missing $COMMON_LIB — run this from a full checkout of the repository."
+# shellcheck source=aws/common.sh
+source "$COMMON_LIB"
 aws sts get-caller-identity >/dev/null 2>&1 || die "AWS credentials are not working."
 
 INSTANCE="${INSTANCE:-$(aws cloudformation describe-stacks --region "$REGION" \
@@ -212,9 +221,11 @@ grep -oE '^[A-Z_]+' /etc/drishya.env | sort
 
 run_step "Starting the containers on the new images" 5 "
 set -e
+$MEMORY_SIZING
 docker network create drishya 2>/dev/null || true
 docker rm -f api web 2>/dev/null || true
-# --memory, and a heap sized FROM it rather than beside it.
+# --memory, sized from the host by MEMORY_SIZING in aws/common.sh, and a heap
+# sized FROM it rather than beside it.
 #
 # The instance has 913 MB and runs this JVM, nginx, dockerd and the OS. With an
 # -Xmx of 448m plus 128m of metaspace plus JVM overhead, the process alone
@@ -228,7 +239,7 @@ docker rm -f api web 2>/dev/null || true
 # MaxRAMPercentage makes the JVM read the cgroup limit rather than guess, so
 # the two numbers cannot drift apart the way -Xmx and --memory would.
 docker run -d --name api --network drishya --restart always \
-  --memory=700m --memory-swap=1400m \
+  --memory=\$LIM --memory-swap=\$SWP \
   --env-file /etc/drishya.env \
   -e JAVA_TOOL_OPTIONS='-XX:MaxRAMPercentage=60 -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC' \
   drishya-api:local >/dev/null
@@ -278,12 +289,6 @@ df -h / | tail -1
 # JSON parameter and Git Bash. A previous attempt at embedding a shell loop
 # with "$f" through those layers silently produced a script that matched
 # nothing and reported success.
-# The watchdog install is shared with the other script that does it; see the
-# header of aws/watchdog.sh for why it is not copied into both.
-WATCHDOG_LIB="$(dirname "${BASH_SOURCE[0]}")/watchdog.sh"
-[ -f "$WATCHDOG_LIB" ] || die "Missing $WATCHDOG_LIB — run this from a full checkout of the repository."
-# shellcheck source=aws/watchdog.sh
-source "$WATCHDOG_LIB"
 
 run_step "Installing the watchdog that acts on the healthcheck" 3 "$WATCHDOG_STEP"
 
