@@ -22,9 +22,15 @@ Twelve figures, landscape throughout.
 ```bash
 cd release-docs/npd
 node render.js     # writes render.html
-#  screenshot each #<id> element from render.html at deviceScaleFactor 3 into img/
+node shots.mjs     # screenshots every figure into img/ at 3x
 node build.js      # writes ../NPD Flowcharts_Drishya.docx
 ```
+
+The middle step used to be a line of prose asking a person to screenshot twelve
+elements by hand. An instruction is not a build step: it is easy to do for
+eleven of them, and a figure left on its old pixels while `detail.js` has moved
+on is a document that disagrees with its own source. `shots.mjs` reproduces the
+figures it replaced byte for byte, which is how that was checked.
 
 ## Two constraints worth knowing before editing
 

@@ -19,7 +19,7 @@ module.exports.detail = {
   NPDP1030: {
     title: 'GATE-1 — Initial Screening', gate: 1,
     basis: 'Gate-1 decision basis: strategic fit, opportunity assessment, risks, and the scope boundaries the project will be held to.',
-    approved: 'Project approved → scope boundaries recorded in CLAUDE.md: hardware out of scope, ingest HTTPS only, no paid APIs, no Kafka or Kubernetes, deploy target a t3.micro → proceed to Phase 2.',
+    approved: 'Project approved → scope boundaries recorded in the engineering guide: hardware out of scope, ingest HTTPS only, no paid APIs, no Kafka or Kubernetes, deploy target a t3.micro → proceed to Phase 2.',
     action: 'Close gate keeper concerns on scope or feasibility and resubmit for approval.',
     reject: 'Stop and archive if the opportunity is rejected or not approved.',
   },
@@ -32,12 +32,12 @@ module.exports.detail = {
   NPDP2020: {
     title: 'Product Design Specification', band: 'blue',
     act: 'Convert the opportunity into a measurable specification → define the wire contract: every enum carries an explicit @JsonValue string matching the frontend vocabulary, timestamps cross as epoch milliseconds, promisedAt and predictedAt are both kept and neither may overwrite the other → internal review → revision control.',
-    out: 'PDS, held in CLAUDE.md. The PDS is required before design begins.',
+    out: 'PDS, held in the repository’s engineering guide. The PDS is required before design begins.',
   },
   NPDP2030: {
     title: 'Create DHF', band: 'purple', spine: true,
-    act: 'Create after PDS; maintain through retirement. Git history is the design record and CLAUDE.md carries the reasoning behind it — every trap is written down at the moment it is understood.',
-    out: 'Design History File = repository + CLAUDE.md. A lifecycle record, not a one-time task.',
+    act: 'Create after PDS; maintain through retirement. Git history is the design record and the engineering guide carries the reasoning behind it — every trap is written down at the moment it is understood.',
+    out: 'Design History File = the repository and its engineering guide. A lifecycle record, not a one-time task.',
   },
   NPDP2040: {
     title: 'Project Plan', band: 'teal',
@@ -95,7 +95,7 @@ module.exports.detail = {
   },
   NPDP3080: {
     title: 'Release Pre-Production Docs', band: 'blue',
-    act: 'Controlled README, CLAUDE.md and DEPLOYMENT.md → Swagger UI at /swagger-ui.html and the document at /v3/api-docs, both public while the endpoints they describe are not → distribute to stakeholders.',
+    act: 'Controlled README, engineering guide and DEPLOYMENT.md → Swagger UI at /swagger-ui.html and the document at /v3/api-docs, both public while the endpoints they describe are not → distribute to stakeholders.',
     out: 'Released documentation set.',
   },
   NPDP3090: {
