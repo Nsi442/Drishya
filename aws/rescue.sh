@@ -339,18 +339,42 @@ curl -s -o /dev/null -w 'GET /api/health  %{http_code}  %{time_total}s\n' http:/
 "
 
 say "Done"
+
+# What to suggest next depends on the box this actually ran against. Telling
+# someone already on a t3.small to resize to a t3.small is the kind of stale
+# advice that makes a script look like it is not reading the room.
+TYPE=$(aws ec2 describe-instances --region "$REGION" --instance-ids "$INSTANCE" \
+    --query "Reservations[0].Instances[0].InstanceType" --output text 2>/dev/null || echo unknown)
+
 cat <<'NEXT'
 The API now runs under a memory limit it cannot exceed, and a watchdog restarts
 it within two minutes if its healthcheck goes unhealthy. Neither needs you to
 be watching.
+NEXT
 
-If it still wedges, the box is simply too small for the workload and the fix is
-the larger instance:
+echo
+echo "  instance: $TYPE"
+case "$TYPE" in
+    *.micro)
+        echo "  If it still wedges, the box is too small for the workload:"
+        echo
+        echo "      bash aws/resize-instance.sh      # t3.small, and a fixed address"
+        ;;
+    *)
+        echo "  Already on the larger instance, so a resize is not the next lever."
+        echo "  If it still wedges, read the watchdog log before changing anything —"
+        echo "  it records every restart and the free memory at the time."
+        ;;
+esac
 
-    bash aws/resize-instance.sh        # t3.small, and a fixed address
+cat <<'NEXT'
 
-To see what is happening without changing anything:
+  Confirm the watchdog is scheduled, not just installed:
 
-    bash aws/diagnose-db.sh
-    aws ssm start-session --target <instance>   # then: tail /var/log/drishya-watchdog.log
+      aws ssm send-command --instance-ids <instance> --document-name AWS-RunShellScript \
+        --parameters 'commands=["systemctl list-timers drishya-watchdog.timer --no-pager"]'
+
+  To see what is happening without changing anything:
+
+      bash aws/diagnose-db.sh
 NEXT
