@@ -65,7 +65,7 @@ export default function VendorAlerts() {
   const onAcknowledge = async (alert) => {
     acknowledge(alert.id, user?.name ?? 'You')
     try {
-      await acknowledgeAlert(alert.id, user?.name ?? 'You')
+      await acknowledgeAlert(alert.id)
       toast.success('Alert acknowledged', { description: `${alert.title} on ${alert.shipmentId ?? 'this consignment'}.` })
     } catch (err) {
       toast.error('Could not acknowledge', { description: err.message })
@@ -109,7 +109,7 @@ export default function VendorAlerts() {
               disabled={!unread}
               onClick={() => {
                 markAllRead()
-                markAllReadService(user)
+                markAllReadService()
                 toast.info('All alerts marked read')
               }}
             >

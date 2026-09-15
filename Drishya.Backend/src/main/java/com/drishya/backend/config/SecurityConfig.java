@@ -211,6 +211,14 @@ public class SecurityConfig {
                         .hasRole("FC")
                         .requestMatchers(HttpMethod.POST, "/api/appointments")
                         .hasRole("FC")
+                        // Resolving a shortage, a damage or a rejected delivery
+                        // is the receiving desk's act, and only Exceptions.jsx
+                        // — an FC page — calls it. Scoping inside the service
+                        // stops a vendor closing ANOTHER vendor's dispute; this
+                        // stops them closing their own, which is the half a
+                        // tenant check cannot express.
+                        .requestMatchers(HttpMethod.PATCH, "/api/exceptions/*")
+                        .hasRole("FC")
                         .requestMatchers(HttpMethod.PATCH, "/api/appointments/*/reschedule",
                                 "/api/appointments/*/decision")
                         .hasRole("FC")

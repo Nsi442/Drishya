@@ -17,6 +17,8 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -115,22 +117,61 @@ public class AlertService {
         };
     }
 
+    /**
+     * The ids the caller asked for, intersected with the ids the caller may
+     * see. Both halves matter: without the intersection this took a list of
+     * ids straight off the request body and marked them read whoever they
+     * belonged to, which is a write across every tenant in the cluster from
+     * any valid token.
+     *
+     * <p>Silently narrowing rather than rejecting the batch is deliberate. The
+     * browser sends the ids of the feed it is looking at, and a feed is already
+     * scoped, so an id from outside it is not a user mistake worth surfacing —
+     * it is either a stale client or somebody probing. The count that comes
+     * back says how many were actually updated.
+     */
     @Transactional
-    public int markRead(List<String> ids) {
-        return ids == null || ids.isEmpty() ? 0 : alerts.markRead(ids);
+    public int markRead(List<String> ids, CallerService.Caller caller) {
+        if (ids == null || ids.isEmpty()) {
+            return 0;
+        }
+        Set<String> mine = scopedFor(caller).stream().map(Alert::getId).collect(Collectors.toSet());
+        List<String> allowed = ids.stream().filter(mine::contains).toList();
+        return allowed.isEmpty() ? 0 : alerts.markRead(allowed);
     }
 
+    /**
+     * Scoped from the CALLER, never from the query string.
+     *
+     * <p>This took an {@code fcId} parameter and used it as the boundary, so a
+     * receiving desk at one site could clear another site's feed — and with the
+     * parameter omitted entirely it called {@code alerts.markAllRead()}, which
+     * marks every alert in the database read for every vendor in the cluster.
+     * A query parameter is something the browser asks for; it is never the
+     * boundary.
+     */
     @Transactional
-    public int markAllRead(String fcId) {
-        return fcId == null || fcId.isBlank() ? alerts.markAllRead() : alerts.markAllReadForFc(fcId);
+    public int markAllRead(CallerService.Caller caller) {
+        List<String> mine = scopedFor(caller).stream()
+                .filter(a -> !a.isRead())
+                .map(Alert::getId)
+                .toList();
+        return mine.isEmpty() ? 0 : alerts.markRead(mine);
     }
 
+    /**
+     * @param caller both the authorisation check and the name that goes on the
+     *     record. The actor used to arrive in the request body, so the audit
+     *     trail said whoever the client typed — on an alert the client need not
+     *     have been able to see in the first place.
+     */
     @Transactional
-    public AlertDto acknowledge(String id, String by) {
+    public AlertDto acknowledge(String id, CallerService.Caller caller) {
         Alert alert = alerts.findById(id)
+                .filter(a -> scopedFor(caller).stream().anyMatch(v -> v.getId().equals(a.getId())))
                 .orElseThrow(() -> ApiException.notFound("That alert no longer exists."));
         alert.setAcknowledged(true);
-        alert.setAcknowledgedBy(by);
+        alert.setAcknowledgedBy(caller == null ? null : caller.name());
         alert.setRead(true);
         return mapper.toDto(alerts.save(alert));
     }
@@ -191,8 +232,15 @@ public class AlertService {
     }
 
     @Transactional
-    public ExceptionDto updateException(String id, Requests.UpdateException request) {
+    public ExceptionDto updateException(String id, Requests.UpdateException request,
+                                        CallerService.Caller caller) {
+        // Same boundary the listing applies, and for the same reason: resolving
+        // a shortage or a damage claim is a commercial act against a named
+        // vendor. Unscoped, any valid token could close anybody's dispute.
+        // Not found rather than forbidden — telling a caller an id exists but
+        // is not theirs already leaks that it exists.
         ReceivingException e = exceptions.findById(id)
+                .filter(row -> visibleTo(row, caller))
                 .orElseThrow(() -> ApiException.notFound("That exception no longer exists."));
 
         if (request.status() != null && !request.status().isBlank()) {

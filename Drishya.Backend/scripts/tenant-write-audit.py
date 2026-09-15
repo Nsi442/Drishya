@@ -97,6 +97,84 @@ for method, path, body in ATTEMPTS:
     if not blocked: leaks.append("%s %s -> %d" % (method, path, code))
     print("  %-6s %-46s %d  %s" % (method, path, code, "blocked" if blocked else "*** ALLOWED ***"))
 
+# --- the writes a status code cannot judge -------------------------------
+#
+# /alerts/read and /alerts/read-all are BULK writes: no id in the path, so the
+# loop above cannot reach them, and a correctly scoped one answers 200 either
+# way — with a count of zero. A 200 here is not a leak and a 403 is not the
+# fix; what matters is whether anything of the other tenant's actually moved.
+#
+# All four of these took no caller at all until they were scoped, while the two
+# GETs beside them always had one: reads scoped first, writes missed entirely.
+
+def call_body(method, path, token, body=None):
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(API+path, data=data, method=method)
+    req.add_header("Authorization", "Bearer "+token)
+    if data: req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return r.status, json.loads(r.read() or b"null")
+    except urllib.error.HTTPError as e:
+        return e.code, None
+    except Exception:
+        return 0, None
+
+def alerts_for(token):
+    r = urllib.request.Request(API+"/api/alerts"); r.add_header("Authorization","Bearer "+token)
+    try:
+        return json.loads(urllib.request.urlopen(r).read())
+    except Exception:
+        return []
+
+print()
+print("Alert and exception writes, judged on effect rather than status:")
+print("  " + "-"*74)
+
+mine_alerts = [a for a in alerts_for(V1) if not a.get("read")]
+if not mine_alerts:
+    print("  SKIPPED: vendor-1 has no unread alert to target.")
+else:
+    AID = mine_alerts[0]["id"]
+
+    code, body = call_body("POST", "/api/alerts/read", V2, {"ids": [AID]})
+    updated = (body or {}).get("updated")
+    ok = updated == 0
+    if not ok: leaks.append("POST /api/alerts/read marked %s of vendor-1's alerts read" % updated)
+    print("  %-52s %s" % ("POST /api/alerts/read with vendor-1's id",
+                          "blocked (updated=0)" if ok else "*** ALLOWED (updated=%s) ***" % updated))
+
+    call_body("POST", "/api/alerts/read-all", V2)
+    still_unread = any(a["id"] == AID and not a.get("read") for a in alerts_for(V1))
+    if not still_unread: leaks.append("POST /api/alerts/read-all cleared vendor-1's feed")
+    print("  %-52s %s" % ("POST /api/alerts/read-all as the other tenant",
+                          "blocked (their feed untouched)" if still_unread else "*** ALLOWED ***"))
+
+    code, _ = call_body("POST", "/api/alerts/%s/acknowledge" % AID, V2, {})
+    ok = code in (403, 404)
+    if not ok: leaks.append("POST /api/alerts/{id}/acknowledge -> %d" % code)
+    print("  %-52s %d  %s" % ("POST /api/alerts/{id}/acknowledge on theirs", code,
+                              "blocked" if ok else "*** ALLOWED ***"))
+
+# A receiving exception is the desk's to resolve. A vendor token must not reach
+# it at all, which is a ROLE rule: scoping alone would still let a vendor close
+# their own dispute, and a party to a commercial claim cannot adjudicate it.
+r = urllib.request.Request(API+"/api/exceptions"); r.add_header("Authorization","Bearer "+login("fc"))
+try:
+    fc_exceptions = json.loads(urllib.request.urlopen(r).read())
+except Exception:
+    fc_exceptions = []
+
+if not fc_exceptions:
+    print("  SKIPPED: no receiving exception to target.")
+else:
+    EID = fc_exceptions[0]["id"]
+    code = call("PATCH", "/api/exceptions/%s" % EID, V2, {"status": "resolved"})
+    ok = code in (403, 404)
+    if not ok: leaks.append("PATCH /api/exceptions/{id} as a vendor -> %d" % code)
+    print("  %-52s %d  %s" % ("PATCH /api/exceptions/{id} as a vendor", code,
+                              "blocked" if ok else "*** ALLOWED ***"))
+
 print()
 print("Unprotected write/read paths: %d" % len(leaks))
 for l in leaks: print("  -", l)

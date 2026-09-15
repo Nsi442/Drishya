@@ -11,15 +11,17 @@ export function markRead(ids) {
   return post('/alerts/read', { ids: Array.isArray(ids) ? ids : [ids] }, { label: 'updating alerts' })
 }
 
-export function markAllRead(user) {
-  return post('/alerts/read-all', null, {
-    label: 'updating alerts',
-    params: { fcId: user?.role === 'fc' ? user.orgId : undefined },
-  })
+// No fcId, and no argument at all. The server scopes this from the token; the
+// browser used to pass the site it wanted cleared, which made a query parameter
+// the boundary. Sending it now would be sending something nothing reads.
+export function markAllRead() {
+  return post('/alerts/read-all', null, { label: 'updating alerts' })
 }
 
-export function acknowledgeAlert(id, by) {
-  return post(`/alerts/${id}/acknowledge`, { by }, { label: 'acknowledging the alert' })
+// Likewise no `by`. The name on the record is the caller's, taken from the
+// token, rather than whatever the client put in the body.
+export function acknowledgeAlert(id) {
+  return post(`/alerts/${id}/acknowledge`, {}, { label: 'acknowledging the alert' })
 }
 
 // pushAlert is gone with the simulation that needed it.

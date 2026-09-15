@@ -38,7 +38,7 @@ export default function NotificationDrawer({ open, onClose, openExceptions = 0 }
 
   const onMarkAll = () => {
     markAllRead()
-    markAllReadService(user)
+    markAllReadService()
   }
 
   const openAlert = (alert) => {

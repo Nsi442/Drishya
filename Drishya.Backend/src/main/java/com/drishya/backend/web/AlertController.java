@@ -44,20 +44,36 @@ public class AlertController {
         return alertService.listFor(callers.resolve(userId), severity, read, search, shipmentId);
     }
 
+    // Every one of these four takes the caller now. They did not, while the two
+    // GETs beside them always have — the same way round as the fault this
+    // project has already hit once: reads scoped first, writes missed entirely.
+    //
+    // A bulk endpoint is still a write. Neither of the first two names an id in
+    // its path, so they were invisible to a write-path audit that probed
+    // /{id}/... routes only.
+
     @PostMapping("/alerts/read")
-    public Map<String, Integer> markRead(@RequestBody Requests.MarkRead request) {
-        return Map.of("updated", alertService.markRead(request.ids()));
+    public Map<String, Integer> markRead(
+            @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId,
+            @RequestBody Requests.MarkRead request) {
+        return Map.of("updated", alertService.markRead(request.ids(), callers.resolve(userId)));
     }
 
+    /**
+     * The {@code fcId} parameter is gone rather than ignored: the scope comes
+     * from the token, and leaving a parameter that no longer decides anything
+     * invites the next caller to believe it does.
+     */
     @PostMapping("/alerts/read-all")
-    public Map<String, Integer> markAllRead(@RequestParam(required = false) String fcId) {
-        return Map.of("updated", alertService.markAllRead(fcId));
+    public Map<String, Integer> markAllRead(
+            @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId) {
+        return Map.of("updated", alertService.markAllRead(callers.resolve(userId)));
     }
 
     @PostMapping("/alerts/{id}/acknowledge")
-    public AlertDto acknowledge(@PathVariable String id,
-                                @RequestBody Requests.AcknowledgeAlert request) {
-        return alertService.acknowledge(id, request.by());
+    public AlertDto acknowledge(@RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId,
+                                @PathVariable String id) {
+        return alertService.acknowledge(id, callers.resolve(userId));
     }
 
     @GetMapping("/exceptions")
@@ -71,8 +87,10 @@ public class AlertController {
     }
 
     @PatchMapping("/exceptions/{id}")
-    public ExceptionDto updateException(@PathVariable String id,
-                                        @RequestBody Requests.UpdateException request) {
-        return alertService.updateException(id, request);
+    public ExceptionDto updateException(
+            @RequestAttribute(AuthTokenFilter.USER_ID_ATTRIBUTE) String userId,
+            @PathVariable String id,
+            @RequestBody Requests.UpdateException request) {
+        return alertService.updateException(id, request, callers.resolve(userId));
     }
 }
