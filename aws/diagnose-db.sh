@@ -128,19 +128,39 @@ else
     say "Memory, CPU credits, storage and connections over the last 3 hours"
     # FreeableMemory near zero is cause 1. CPUCreditBalance near zero is cause
     # 3. DatabaseConnections pinned at the pool size is cause 4.
+    #
+    # One line per metric, already converted, rather than six raw datapoints
+    # flattened onto the label's line with tr '\n' ' '. On Git Bash that
+    # flattening produced an unreadable table: the AWS CLI ends its lines CRLF,
+    # tr replaced only the LF, and every surviving CR returned the cursor to
+    # column 0 so the numbers overprinted their own label —
+    # "132218880.0mory147659980.83". Bytes are divided here too, because a
+    # footnote asking the reader to divide by 1048576 is a footnote nobody
+    # applies while reading a garbled line.
     for M in FreeableMemory CPUCreditBalance FreeStorageSpace DatabaseConnections; do
-        printf '  %-22s' "$M"
-        aws cloudwatch get-metric-statistics --region "$REGION" \
+        data=$(aws cloudwatch get-metric-statistics --region "$REGION" \
             --namespace AWS/RDS --metric-name "$M" \
             --dimensions Name=DBInstanceIdentifier,Value="$DB" \
             --start-time "$(date -u -d '3 hours ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-3H +%Y-%m-%dT%H:%M:%SZ)" \
             --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --period 900 --statistics Minimum Average \
-            --query "sort_by(Datapoints,&Timestamp)[-6:].[Minimum,Average]" \
-            --output text 2>/dev/null | tr '\n' ' ' || true
-        echo
+            --query "sort_by(Datapoints,&Timestamp)[].[Average,Minimum]" \
+            --output text 2>/dev/null | tr -d '\r' || true)
+        if [ -z "$data" ]; then
+            printf '  %-22s (no datapoints in the window)\n' "$M"
+            continue
+        fi
+        printf '  %-22s%s\n' "$M" "$(printf '%s\n' "$data" | awk -v m="$M" '
+            NF >= 2 { latest = $1; if (min == "" || $2 + 0 < min + 0) min = $2 }
+            END {
+                if (latest == "") { print "(no datapoints in the window)"; exit }
+                div = 1; unit = "";
+                if (m == "FreeableMemory")   { div = 1048576;    unit = " MB" }
+                if (m == "FreeStorageSpace") { div = 1073741824; unit = " GB" }
+                printf "%.1f%s now, %.1f%s at its lowest over the 3 hours",
+                       latest / div, unit, min / div, unit
+            }')"
     done
-    echo "  (FreeableMemory and FreeStorageSpace are bytes; divide by 1048576 for MB)"
 fi
 
 # --- 2. or is it the API container being killed on the instance? ----------
@@ -162,10 +182,28 @@ for c in api web; do
 done
 echo
 echo '--- the API container on database trouble ---'
-docker logs api --since 6h 2>&1 | grep -iE 'HikariPool|connection is not available|could not open|socket|terminating connection|FATAL|OutOfMemory|Communications link' | tail -20 || echo '  nothing matching in the last 6 hours'
+# Captured rather than piped straight out, because '| tail -20 || echo ...'
+# takes its exit status from tail, which always succeeds — so the fallback
+# never ran and an empty grep printed a blank line. A blank line here reads
+# as 'nothing wrong'; it is indistinguishable from 'the log was not readable'.
+HITS=\$(docker logs api --since 6h 2>&1 | grep -iE 'HikariPool|connection is not available|could not open|socket|terminating connection|FATAL|OutOfMemory|Communications link' | tail -20)
+if [ -n \"\$HITS\" ]; then printf '%s\n' \"\$HITS\"; else echo '  nothing matching in the last 6 hours'; fi
 echo
 echo '--- and how it has been restarting ---'
-docker logs api --since 48h 2>&1 | grep -c 'Started DrishyaBackendApplication' | xargs echo '  application starts in 48h:'
+# The count is only worth printing if there is a log to count in. This said
+# 'application starts in 48h: 0' for a container that had restarted six times
+# in the preceding twenty minutes, because aws/rescue.sh had truncated every
+# container log to reclaim disk eight minutes earlier. A zero drawn from an
+# empty file is not a quiet API, and the two must not print the same.
+LINES=\$(docker logs api 2>&1 | wc -l)
+if [ \"\$LINES\" -lt 2 ]; then
+  echo '  the container log is EMPTY, so this cannot be answered from it.'
+  echo '  aws/rescue.sh truncates container logs when the disk is tight, and a'
+  echo '  recreate starts a fresh one. Not evidence that the API has been quiet.'
+else
+  STARTS=\$(docker logs api --since 48h 2>&1 | grep -c 'Started DrishyaBackendApplication' || true)
+  echo \"  application starts in 48h: \$STARTS   (out of \$LINES log lines)\"
+fi
 "
 
 say "Reading this"

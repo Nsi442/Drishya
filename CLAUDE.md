@@ -443,7 +443,18 @@ payload is built. Both mistakes are silent locally. `\$JVM_OPTS` escaped expande
 the box, so the container came up with **no metaspace ceiling and the run reported success**;
 `$(seq 1 30)` left bare expanded to thirty newline-separated numbers, so `for _ in ...` arrived as
 a syntax error naming a line in a file nobody can see. `bash aws/check-payloads.sh` dumps what
-would be sent and parses it, without sending anything. Run it after touching either script.
+would be sent and parses it, without sending anything. Run it after touching any of them — it finds the scripts itself, by looking for `run_step`,
+because a hand-kept list is how `diagnose-db.sh` sat outside the check while carrying the same
+hazard.
+
+**A repair that destroys the evidence makes the next fault harder than this one.** `rescue.sh`
+truncated every container json log on every run, not only when the disk was tight, and on this
+instance that file is the *only* copy of the API's log. So a rescue wiped the record of what the
+API had just been doing, and `diagnose-db.sh` — run minutes later to find out exactly that —
+read the empty file and reported `application starts in 48h: 0` for a container that had been
+restarted six times in the preceding twenty minutes. Truncation is now conditional on 80% usage,
+and the count refuses to answer from an empty log rather than answering zero. **A diagnostic
+that reports silence as health is the JVM surviving its own OOM, one layer up.**
 
 **Absent is not zero — and the caller is usually where it goes wrong.** `formatTime`/`formatRelative` handed a
 null to `new Date(null)` — epoch 0 — and rendered "ETA 05:30 am · 20695d ago" in the same

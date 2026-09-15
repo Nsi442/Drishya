@@ -30,12 +30,22 @@ mkdir -p "$WORK/bin" "$WORK/out"
 # Enough of the CLI to get past the stack lookups at the top of each script.
 cat > "$WORK/bin/aws" <<'STUB'
 #!/usr/bin/env bash
-for a in "$@"; do case "$a" in
-  *InstanceId*)  echo i-0000000000000000; exit 0;;
-  *SiteUrl*)     echo http://example.invalid; exit 0;;
-  *SiteDnsName*) echo example.invalid; exit 0;;
+# Matched against the WHOLE command line, most specific first, and both halves
+# of that matter. An earlier version tested each argument in turn, so for the
+# SSM readiness call — which carries "Key=InstanceIds,Values=..." before its
+# PingStatus query — the instance-id pattern matched the earlier argument and
+# answered with an id whatever order the patterns were in. resize-instance.sh
+# then polled thirty times, died, and reached none of its steps, while the run
+# still reported ok for every other script.
+ALL="$*"
+case "$ALL" in
+  *PingStatus*)   echo Online; exit 0;;
   *InstanceType*) echo t3.small; exit 0;;
-esac; done
+  *SiteUrl*)      echo http://example.invalid; exit 0;;
+  *SiteDnsName*)  echo example.invalid; exit 0;;
+  *DBInstanceIdentifier*|*drishya-db*) echo drishya-db; exit 0;;
+  *InstanceId*)   echo i-0000000000000000; exit 0;;
+esac
 echo ok
 STUB
 chmod +x "$WORK/bin/aws"
@@ -49,8 +59,17 @@ chmod +x "$WORK/bin/sleep" "$WORK/bin/curl"
 
 cp aws/common.sh "$WORK/common.sh"
 
+# Discovered rather than listed, because a hand-kept list is how
+# aws/diagnose-db.sh sat outside this check while carrying the same two-shells
+# hazard as the scripts inside it. Anything that builds an SSM payload defines
+# run_step; that is the thing to look for.
+SCRIPTS=$(grep -l 'run_step() {' aws/*.sh | xargs -n1 basename | grep -v '^check-payloads.sh$')
+echo "checking: $(echo $SCRIPTS)"
+echo
+
 fail=0
-for name in rescue.sh build-on-instance.sh; do
+unchecked=0
+for name in $SCRIPTS; do
     python3 - "$WORK" "$name" <<'PY'
 import sys, pathlib
 work, name = sys.argv[1], sys.argv[2]
@@ -73,7 +92,14 @@ PY
     PATH="$WORK/bin:$PATH" timeout 60 bash "$WORK/$name" >/dev/null 2>&1 || true
 
     for payload in "$WORK/out/$name".*.sh; do
-        [ -e "$payload" ] || { echo "$name: no payloads dumped"; fail=1; break; }
+        # A script that reaches none of its steps under the stubs is UNCHECKED,
+        # which is different from broken and must not be reported as either
+        # "ok" or a syntax error.
+        [ -e "$payload" ] || {
+            printf '  SKIP  %s: reached no steps under the stubs, so nothing was checked\n' "$name"
+            unchecked=1
+            break
+        }
         label=$(cat "${payload%.sh}.label")
         if out=$(bash -n "$payload" 2>&1); then
             printf '  ok    %s: %s\n' "$name" "$label"
@@ -94,4 +120,8 @@ if [ "$fail" -ne 0 ]; then
     exit 1
 fi
 echo
-echo "Every payload parses."
+if [ "$unchecked" -ne 0 ]; then
+    echo "Every payload that was reached parses; one or more scripts were skipped above."
+else
+    echo "Every payload parses."
+fi
