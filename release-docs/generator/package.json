@@ -1,0 +1,8 @@
+{
+  "name": "drishya-release-docs",
+  "private": true,
+  "description": "Generators for the Final MVP Report and the NPD flowcharts. Committed so npm installs HERE rather than walking up to the repository root.",
+  "dependencies": {
+    "docx": "^9.7.1"
+  }
+}
