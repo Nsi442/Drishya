@@ -248,11 +248,25 @@ public class ShipmentService {
         // actually knows. Only with neither does the flat fallback apply.
         Instant agreedSlot = request.slotStart() != null
                 ? Instant.ofEpochMilli(request.slotStart()) : null;
-        Optional<Duration> engineEstimate = agreedSlot != null ? Optional.empty()
+        // Best available, in order. A lane the cluster has history for is the
+        // real answer; failing that the road distance we have just planned,
+        // costed at the pooled speed for that hour, which is coarse but still
+        // derived from what the cluster has driven. Only with neither does the
+        // flat fallback apply, and a consignment carrying it is invisible on
+        // the receiving desk's board for the rest of the day.
+        Optional<Duration> laneEstimate = agreedSlot != null ? Optional.empty()
                 : featureBuilder.timeFromDeparture(matchLane(fc, originPoint), pickupAt);
+        Optional<Duration> engineEstimate = laneEstimate.isPresent() ? laneEstimate
+                : agreedSlot != null ? Optional.empty()
+                : featureBuilder.timeForDistance(distanceKm, fc, pickupAt);
 
+        // Anchored to the pickup in every branch. The old fallback was a flat
+        // now-plus-36-hours, which bore no relation to anything the vendor had
+        // entered and pushed the consignment off the receiving desk's board for
+        // the rest of the day. There is no longer a path that produces it.
         Instant promisedAt = agreedSlot != null ? agreedSlot
-                : engineEstimate.map(pickupAt::plus).orElseGet(() -> now.plus(36, ChronoUnit.HOURS));
+                : engineEstimate.map(pickupAt::plus)
+                        .orElseGet(() -> pickupAt.plus(4, ChronoUnit.HOURS));
 
         Shipment s = new Shipment();
         s.setId("SHP-" + (24001 + sequence));
@@ -297,7 +311,11 @@ public class ShipmentService {
         // permanently, perfectly on time. Only the flat fallback stays a
         // placeholder, because a lane the cluster has never seen genuinely has
         // nothing to promise until the vehicle is on it.
-        s.setSlotAgreed(agreedSlot != null || engineEstimate.isPresent());
+        // A vendor's slot is an agreement, and so is one the engine costed from a
+        // lane it has history for. The distance estimate is NOT: it is a
+        // placeholder good enough to keep the consignment on the board, and
+        // EtaService replaces it from the first real prediction.
+        s.setSlotAgreed(agreedSlot != null || laneEstimate.isPresent());
         s.setCommodity(request.commodity());
         s.setCartons(request.cartons());
         s.setWeightKg(request.weightKg());

@@ -216,6 +216,57 @@ public class FeatureBuilder {
                 Duration.ofSeconds((long) ((walk.travelMinutes() + queue.minutes()) * 60)));
     }
 
+    /**
+     * Door-to-door speed assumed when the cluster has no history whatsoever.
+     *
+     * <p>Roughly what the seeded lanes average once their urban approaches are
+     * included. It is a constant and therefore the weakest number in the
+     * system, which is why it is the last resort and why a window built on it
+     * is never marked agreed: the engine replaces it from the first real fix.
+     */
+    private static final double NO_HISTORY_SPEED_KMPH = 45;
+
+    /**
+     * What a journey of this length is expected to take, for a corridor the
+     * cluster has no lane for.
+     *
+     * <p><b>The coarse cousin of {@link #timeFromDeparture}, and the reason a
+     * booking into an unknown site is still visible.</b> Only three lanes are
+     * seeded, so most vendor-and-site pairs match none; before this, those
+     * bookings fell through to a flat thirty-six hours from now, unrelated to
+     * the pickup, which put them past the end of today and off the receiving
+     * desk's arrival board entirely. Invisible is a worse answer than
+     * approximate.
+     *
+     * <p>It is still the cluster's own data rather than a constant: the pooled
+     * mean road speed for the hour of departure, weighted by how much of that
+     * road has actually been driven, plus the same dock queue a lane estimate
+     * would add. It is deliberately NOT treated as an agreement — the caller
+     * leaves the window unagreed so the engine replaces it with a real
+     * prediction on the first cycle that has a position to work from.
+     *
+     * @return empty when the cluster has no speed history at all, which is only
+     *     true of a system that has never run.
+     */
+    public Optional<Duration> timeForDistance(double distanceKm, FulfilmentCentre fc, Instant departAt) {
+        if (distanceKm <= 0) {
+            return Optional.empty();
+        }
+        int hour = departAt.atZone(SITE_ZONE).getHour();
+        Double pooled = segmentSpeeds.meanSpeedForHour(hour, DayType.of(departAt, SITE_ZONE));
+        // A database seeded before the lanes existed has no speed history at
+        // all, and DataSeeder skips a populated database, so it never gains
+        // any. That is the deployed environment, and it must still promise
+        // something anchored to the pickup — an unanchored promise is the fault
+        // this whole chain exists to stop.
+        double speed = (pooled != null && pooled > 1) ? pooled : NO_HISTORY_SPEED_KMPH;
+        double travelMinutes = distanceKm / speed * 60d;
+        DockQueue queue = queueAfter(fc, departAt, travelMinutes);
+        log.debug("No lane for this corridor; costing {} km at the pooled {} km/h for hour {}",
+                Math.round(distanceKm), Math.round(speed), hour);
+        return Optional.of(Duration.ofSeconds((long) ((travelMinutes + queue.minutes()) * 60)));
+    }
+
     /** What the road ahead costs, and how much the cluster has seen of it. */
     private record LaneWalk(double travelMinutes, double remainingM, double meanSpeedAhead,
                             int minSamples, int remainingSegments) {

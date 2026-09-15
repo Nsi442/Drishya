@@ -407,6 +407,19 @@ minute. With an estimate the window is a real agreement, so `slotAgreed` is set 
 rewrites it later; with no lane matched it stays a placeholder and `EtaService` books it on the
 first cycle, exactly as before.
 
+**Three lanes are seeded, so most bookings match none.** `FeatureBuilder.timeFromDeparture`
+answers from a lane the cluster has history for, and `matchLane` needs one whose FC matches and
+whose origin is within 5 km. Only PUN-FCB, PUN-FCW and JAI-FCM exist, so a Pune vendor booking into
+Manesar or Sanand matched nothing and fell through to the old flat `now + 36 hours` — the same
+invisible-on-the-arrival-board fault, in the cases the lane fix did not reach. Worse on the
+deployed database, which `DataSeeder` skips because it is populated: it never gained the lanes at
+all, so even Bhiwandi fell through. The chain is now lane, then the planned road distance costed at
+the pooled mean speed for that hour, then a documented constant — and **every branch is anchored to
+the pickup time**, because a promise that ignores what the vendor entered is the bug however it is
+arrived at. Proved by deleting `segment_speed_history` and then `lanes` entirely: a 127 km run
+stayed at pickup + 3.2 h instead of reverting to 36 hours. Only the lane branch marks the window
+agreed; the coarser two stay placeholders for `EtaService` to replace.
+
 **Absent is not zero — and the caller is usually where it goes wrong.** `formatTime`/`formatRelative` handed a
 null to `new Date(null)` — epoch 0 — and rendered "ETA 05:30 am · 20695d ago" in the same
 typeface as a real arrival. `DelayPill` defaulted a missing delay to 0 and displayed a confident
