@@ -167,7 +167,9 @@ docker container prune -f >/dev/null 2>&1 || true
 # Container logs grow without bound on a box that is never redeployed cleanly,
 # and the api container is chatty: an ETA cycle a minute, for weeks. Truncated
 # rather than deleted, so a running container keeps its open file handle.
-find /var/lib/docker/containers -name '*-json.log' -exec truncate -s 0 {} + 2>/dev/null || true
+# Rotated files only. A running container's current log must not be truncated
+# — see LOG_ROTATION in aws/common.sh for what that does to 'docker logs'.
+find /var/lib/docker/containers -name '*-json.log.[0-9]*' -delete 2>/dev/null || true
 journalctl --vacuum-size=50M >/dev/null 2>&1 || true
 rm -rf /root/Drishya/Drishya.Backend/target 2>/dev/null || true
 echo 'after:'
@@ -240,10 +242,11 @@ docker rm -f api web 2>/dev/null || true
 # the two numbers cannot drift apart the way -Xmx and --memory would.
 docker run -d --name api --network drishya --restart always \
   --memory=\$LIM --memory-swap=\$SWP \
+  $LOG_ROTATION \
   --env-file /etc/drishya.env \
   -e JAVA_TOOL_OPTIONS=\"$JVM_OPTS\" \
   drishya-api:local >/dev/null
-docker run -d --name web --network drishya --restart always -p 80:80 drishya-web:local >/dev/null
+docker run -d --name web --network drishya --restart always -p 80:80 $LOG_ROTATION drishya-web:local >/dev/null
 sleep 60
 docker ps --format '{{.Names}} {{.Status}}'
 echo '--- migrations and startup ---'

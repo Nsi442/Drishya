@@ -456,6 +456,18 @@ restarted six times in the preceding twenty minutes. Truncation is now condition
 and the count refuses to answer from an empty log rather than answering zero. **A diagnostic
 that reports silence as health is the JVM surviving its own OOM, one layer up.**
 
+**Never truncate a running container's log; rotate it instead.** The conditional truncation above
+was still the wrong instrument. Docker's json-file logger holds an open handle and tracks its own
+write offset, so `truncate -s 0` sets the length to zero without moving that offset: the next line
+lands back where it was and leaves a hole of NUL bytes at the start. `docker logs` reads from the
+beginning, grinds through the hole finding nothing parseable, and **appears to hang with no
+output** — on the deployed instance it had to be killed with Ctrl+C, twice, on a container that was
+`Up 2 days (healthy)`. `LOG_ROTATION` in `aws/common.sh` (`max-size=10m max-file=3`) caps the log
+at creation so nothing ever needs truncating; a rescue now deletes only the rotated files, which
+are closed, and truncates only containers that are not running. A missing `max-size` is itself a
+reason to recreate the container, because the holed file lives in the container's directory and
+goes when the container does.
+
 **Absent is not zero — and the caller is usually where it goes wrong.** `formatTime`/`formatRelative` handed a
 null to `new Date(null)` — epoch 0 — and rendered "ETA 05:30 am · 20695d ago" in the same
 typeface as a real arrival. `DelayPill` defaulted a missing delay to 0 and displayed a confident

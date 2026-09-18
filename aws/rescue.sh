@@ -160,10 +160,25 @@ docker container prune -f 2>/dev/null | tail -1 || true
 # for a container that had been restarted six times in the preceding twenty
 # minutes. A repair that destroys the evidence of the fault it repaired makes
 # the next fault harder to find than it was.
+#
+# And it must never truncate a log whose container is RUNNING, whatever the
+# disk says. See LOG_ROTATION in aws/common.sh: truncating under a live writer
+# leaves a hole of NUL bytes that makes 'docker logs' hang with no output, so
+# the repair costs the very thing it was protecting. The rotated files are
+# closed and carry the bulk of the bytes, so deleting those reclaims nearly as
+# much with nothing at risk.
 USED=\$(df --output=pcent / | tail -1 | tr -dc '0-9')
 if [ \"\${USED:-0}\" -ge 80 ]; then
-  echo \"root filesystem at \${USED}% - truncating container logs\"
-  find /var/lib/docker/containers -name '*-json.log' -exec truncate -s 0 {} + 2>/dev/null || true
+  echo \"root filesystem at \${USED}% - removing ROTATED container logs\"
+  find /var/lib/docker/containers -name '*-json.log.[0-9]*' -delete 2>/dev/null || true
+  # Current logs, but only for containers nothing is writing to.
+  for d in /var/lib/docker/containers/*/; do
+    cid=\$(basename \"\$d\")
+    running=\$(docker inspect -f '{{.State.Running}}' \"\$cid\" 2>/dev/null || echo unknown)
+    if [ \"\$running\" = false ]; then
+      truncate -s 0 \"\$d\$cid-json.log\" 2>/dev/null || true
+    fi
+  done
 else
   echo \"root filesystem at \${USED}% - leaving container logs alone (they are the only record of what the API did)\"
 fi
@@ -210,6 +225,7 @@ if [ -z \"\$(docker ps -aq -f name=^api\$)\" ]; then
   docker network create drishya 2>/dev/null || true
   docker run -d --name api --network drishya --restart always \
     --memory=\$LIM --memory-swap=\$SWP \
+    $LOG_ROTATION \
     --env-file /etc/drishya.env \
     -e JAVA_TOOL_OPTIONS=\"$JVM_OPTS\" \
     drishya-api:local >/dev/null
@@ -244,18 +260,32 @@ else
   # CloudWatch log stream that is the only way to read a log without a shell.
   WANT='-XX:MaxMetaspaceSize=256m'
   HAVE=\$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' api | grep JAVA_TOOL_OPTIONS || true)
+  # Missing log rotation is the second reason to recreate, and it is the only
+  # way to repair a log a truncate has already holed: the file lives in the
+  # container's directory, so it goes when the container does. Checked on the
+  # json-file driver only — awslogs rotates nowhere and takes no max-size.
+  ROTATED=\$(docker inspect -f '{{index .HostConfig.LogConfig.Config \"max-size\"}}' api 2>/dev/null || true)
+  DRIVER=\$(docker inspect -f '{{.HostConfig.LogConfig.Type}}' api)
+  NEEDS_ROTATION=no
+  if [ \"\$DRIVER\" = json-file ] && [ -z \"\$ROTATED\" -o \"\$ROTATED\" = '<no value>' ]; then
+    NEEDS_ROTATION=yes
+  fi
   # -- and -F, because the pattern begins with a dash and contains none of
   # grep's metacharacters: without them grep reads -XX:... as an option, the
   # match always fails, and the container is recreated on every single run.
-  if ! printf '%s' \"\$HAVE\" | grep -qF -- \"\$WANT\"; then
+  if ! printf '%s' \"\$HAVE\" | grep -qF -- \"\$WANT\" || [ \"\$NEEDS_ROTATION\" = yes ]; then
     IMG=\$(docker inspect -f '{{.Config.Image}}' api)
     LOGDRV=\$(docker inspect -f '{{.HostConfig.LogConfig.Type}}' api)
     LOGOPTS=\$(docker inspect -f '{{range \$k, \$v := .HostConfig.LogConfig.Config}}--log-opt {{\$k}}={{\$v}} {{end}}' api)
-    echo \"JVM flags are stale; recreating from \$IMG (log driver: \$LOGDRV)\"
+    echo \"recreating from \$IMG (log driver: \$LOGDRV, rotation needed: \$NEEDS_ROTATION)\"
+    # Only when the driver is json-file: LOGOPTS already carries whatever the
+    # container had, and max-size is not a thing awslogs accepts.
+    ROT=''
+    [ \"\$NEEDS_ROTATION\" = yes ] && ROT='$LOG_ROTATION'
     docker rm -f api >/dev/null 2>&1 || true
     docker run -d --name api --network drishya --restart always \
       --memory=\$LIM --memory-swap=\$SWP \
-      --log-driver \"\$LOGDRV\" \$LOGOPTS \
+      --log-driver \"\$LOGDRV\" \$LOGOPTS \$ROT \
       --env-file /etc/drishya.env \
       -e JAVA_TOOL_OPTIONS=\"$JVM_OPTS\" \
       \"\$IMG\" >/dev/null
@@ -269,7 +299,7 @@ fi
 if [ -z \"\$(docker ps -q -f name=^web\$)\" ]; then
   if [ -n \"\$(docker images -q drishya-web:local 2>/dev/null)\" ]; then
     docker rm -f web 2>/dev/null || true
-    docker run -d --name web --network drishya --restart always -p 80:80 drishya-web:local >/dev/null
+    docker run -d --name web --network drishya --restart always -p 80:80 $LOG_ROTATION drishya-web:local >/dev/null
     echo 'web was not running; started it'
   else
     echo 'WARNING: web is not running and drishya-web:local is missing'

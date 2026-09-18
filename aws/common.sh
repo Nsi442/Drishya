@@ -145,6 +145,21 @@ fi"
 # OutOfMemoryError is the state nothing could see: Docker healthy, OOMKilled
 # false, restarts zero, and every real request timing out. Exiting makes
 # --restart always do its job and turns an invisible wedge into a restart.
+# Log rotation, which is what makes reclaiming a container log unnecessary.
+#
+# Without it the json log grows without bound, which is why a rescue truncated
+# it — and truncating a RUNNING container's log is the trap this exists to
+# close. Docker's json-file logger holds an open handle and tracks its own
+# write offset; 'truncate -s 0' sets the length to zero without moving that
+# offset, so the next line lands back where it was and leaves a hole of NUL
+# bytes at the start. 'docker logs' then reads from the beginning, grinds
+# through that hole finding no parseable lines, and appears to hang with no
+# output — on the deployed instance it had to be killed with Ctrl+C twice.
+#
+# 10m x 3 caps the container at 30 MB on an 8 GB volume, keeps days of an
+# ETA-cycle-a-minute, and means nothing ever has to truncate anything.
+LOG_ROTATION='--log-opt max-size=10m --log-opt max-file=3'
+
 JVM_OPTS='-XX:MaxRAMPercentage=50 -XX:MaxMetaspaceSize=256m -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError'
 
 MEMORY_SIZING='
